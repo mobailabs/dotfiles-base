@@ -54,6 +54,9 @@ read_list() {
   local line pkg
   while IFS= read -r line; do
     pkg="${line%%#*}"
+    # 先 ltrim 再取第一个字段，和 macview 的 Swift `split(whereSeparator:)` 一致：
+    # 直接 `${pkg%%[[:space:]]*}` 会把 `  zsh` 这种前导空白的行读成空串。
+    pkg="${pkg#"${pkg%%[![:space:]]*}"}"
     pkg="${pkg%%[[:space:]]*}"
     [[ -n "$pkg" ]] || continue
     echo "$pkg"
@@ -117,11 +120,12 @@ main() {
   [[ "$DRY_RUN" == "1" ]] || brew update
 
   # 收集失败项，最后一并报告 —— 一个包失败不该让其余的不装。
-  local failed=() p
+  local -a failed=()
 
   local pkgs
   pkgs="$( { read_list "$common_cli"; read_list "$os_cli"; } | sort -u )"
   if [[ -n "$pkgs" ]]; then
+    local p
     while IFS= read -r p; do
       [[ -n "$p" ]] || continue
       install_formula "$p" || failed+=("formula:$p")
@@ -132,6 +136,7 @@ main() {
     local casks
     casks="$(read_list "$macos_cask" | sort -u)"
     if [[ -n "$casks" ]]; then
+      local c
       while IFS= read -r c; do
         [[ -n "$c" ]] || continue
         install_cask "$c" || failed+=("cask:$c")

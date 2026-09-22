@@ -47,11 +47,23 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 # ---- 软依赖（会被自动补） ----
-if ! command -v brew >/dev/null 2>&1; then
+#
+# ⚠️ 不能在非交互 shell 里只信 `command -v brew`：
+# install.zsh 是非交互执行的，PATH 是 launchd 给的最小值，
+# 即使 brew 已装在 /opt/homebrew/bin，这里也**找不到** ——
+# 会给出「没有 Homebrew」的假警告（然后 brew-install 又发现它其实在）。
+# 所以按实际安装路径判断。
+has_brew() {
+  command -v brew >/dev/null 2>&1 && return 0
+  [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]]
+}
+
+if ! has_brew; then
   warn+=("没有 Homebrew —— brew-install 会先自动安装它")
 fi
 
-if ! command -v mise >/dev/null 2>&1; then
+# mise 同理：brew 装的 mise 在非交互 PATH 里也可能看不到。
+if ! command -v mise >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/mise" ]]; then
   warn+=("没有 mise —— 它会在 brew 阶段被装上，之后才跑 mise install")
 fi
 
