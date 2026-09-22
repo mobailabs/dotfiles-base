@@ -1,0 +1,102 @@
+[core]
+    editor = vim
+    filemode = false
+    excludesfile = ~/.gitignore
+    attributesfile = ~/.gitattributes
+	autocrlf = input
+	quotepath = false
+	longpaths = true
+	trustctime = false
+	ignorecase = true
+	untrackedcache = true
+
+# so much color
+[color]
+    ui = auto
+[color "diff"]
+    meta = yellow bold
+    commit = green bold
+    frag = magenta bold
+    old = red bold
+    new = green bold
+    whitespace = red reverse
+    newMoved = cyan
+    oldMoved = blue
+[color "diff-highlight"]
+    oldNormal = red bold
+    oldHighlight = "red bold 52"
+    newNormal = "green bold"
+    newHighlight = "green bold 22"
+[color "branch"]
+    current = yellow reverse
+    local = yellow
+    remote = green
+[color "status"]
+    added = yellow
+    changed = green
+    untracked = cyan
+
+[merge]
+    renameLimit = 0
+
+# use separate file for username / github token / etc
+[include]
+    path = ~/.gitconfig.local
+
+[remote "origin"]
+    #fetch = +refs/heads/*:refs/remotes/origin/*
+
+# Keep identity and signing settings in ~/.gitconfig.local (private overlay).
+# Example (in ~/.gitconfig.local):
+#   [user]
+#     name = Your Name
+#     email = your@email.com
+#   [commit]
+#     gpgsign = true
+#   [gpg]
+#     program = /opt/homebrew/bin/gpg
+
+[pull]
+	rebase = false
+[commit]
+	gpgsign = false
+[alias]
+	gac = "!f() { git add -A && git commit -m \"$*\"; }; f"
+[filter "lfs"]
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+	clean = git-lfs clean -- %f
+[safe]
+	directory = *
+[init]
+	defaultBranch = master
+[http]
+	postBuffer = 655360000
+[diff "text"]
+	textconv = cat
+[mergetool]
+	keepBackup = false
+[lfs]
+	concurrenttransfers = 32
+	fetchrecentrefsdays = 0
+	pruneoffsetdays = 0
+	dialtimeout = 3
+	tlstimeout = 3
+[lfs "transfer"]
+	maxretries = 1
+	maxretrydelay = 2
+[merge "lfs-text"]
+	driver = git lfs merge-driver --ancestor %O --current %A --other %B --marker-size %L --output %A --program 'git merge-file --stdout --marker-size=%%L %%A %%O %%B >%%D'
+[rebase]
+	backend = merge
+[log]
+    date = format:%Y-%m-%d %H:%M:%S
+[user]
+	useConfigOnly = true
+[credential "https://github.com"]
+	helper = 
+	helper = !/opt/homebrew/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/opt/homebrew/bin/gh auth git-credential

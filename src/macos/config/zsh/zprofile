@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+
+# ============================================
+# .zprofile - 登录 Shell 配置
+# ============================================
+# 这个文件在登录 shell 时加载（在 .zshrc 之前）
+# 适合设置一次性的环境初始化
+
+# ============================================
+# Homebrew 环境初始化
+# ============================================
+# brew shellenv 会设置 HOMEBREW_* 变量和添加 PATH
+if [[ -x "/opt/homebrew/bin/brew" ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [[ -x "/usr/local/bin/brew" ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
+elif command -v brew >/dev/null 2>&1; then
+  eval "$(brew shellenv)"
+fi

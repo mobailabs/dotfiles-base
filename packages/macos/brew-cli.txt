@@ -1,0 +1,38 @@
+# macOS-specific or "nice-to-have" CLI packages.
+# Shared minimal CLI lives in packages/common/brew-cli.txt.
+
+# Daily use extras
+gh
+xcodes
+
+# Zsh enhancements
+zsh-autosuggestions
+zsh-completions
+zsh-syntax-highlighting
+zsh-fast-syntax-highlighting
+zsh-history-substring-search
+zsh-autocomplete
+
+# Dev tools
+fd
+direnv
+git-lfs
+gnu-sed
+coreutils
+findutils
+moreutils
+
+# Monitoring
+bottom
+htop
+ncdu
+
+# Utilities
+wget
+tree
+zoxide
+the_silver_searcher
+oath-toolkit
+ffmpeg
+daipeihust/tap/im-select
+pngpaste

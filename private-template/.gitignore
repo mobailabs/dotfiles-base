@@ -1,0 +1,33 @@
+# Private template .gitignore
+# Goal: avoid accidentally committing decrypted plaintext secrets.
+
+# --- git-secret metadata (must be committed) ---
+!.gitsecret/
+!.gitsecret/keys/
+!.gitsecret/keys/pubring.kbx
+!.gitsecret/keys/trustdb.gpg
+!.gitsecret/paths/
+!.gitsecret/paths/mapping.cfg
+
+# --- secrets directory rules ---
+# By default, ignore any plaintext secret files in secrets/
+# while still allowing you to keep the manifest tracked.
+# ONLY commit: manifest.yml + *.secret (encrypted artifacts)
+secrets/*
+!secrets/manifest.yml
+!secrets/*.secret
+
+# Optional: ignore common decrypted byproducts / editor files
+secrets/*.bak
+secrets/*.tmp
+secrets/.DS_Store
+
+# --- OS / editor noise ---
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.gitsecret/keys/random_seed
+!*.secret

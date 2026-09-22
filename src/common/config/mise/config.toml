@@ -1,0 +1,13 @@
+[tools]
+bun = "1.4"
+go = "1.25"
+java = "zulu-21"
+maven = "3.8.6"
+node = "25"
+python = "3.12"
+rust = "1.98.1"
+pnpm = "9.15.9"
+
+[settings]
+idiomatic_version_file_enable_tools = ["python"]
+auto_install = true

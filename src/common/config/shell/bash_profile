@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+
+# Common bash profile (cross-platform).
+
+# Optional: LM Studio CLI PATH (if installed under $HOME)
+if [[ -d "$HOME/.cache/lm-studio/bin" ]]; then
+  export PATH="$PATH:$HOME/.cache/lm-studio/bin"
+fi
+
+# 如果当前是交互式 shell 且存在 zsh，则自动切换到 zsh
+if [[ -t 1 && "$SHELL" != *"zsh" ]] && command -v zsh >/dev/null 2>&1; then
+  exec zsh -l
+fi
+
+if [[ -d "$HOME/.lmstudio/bin" ]]; then
+  export PATH="$PATH:$HOME/.lmstudio/bin"
+fi

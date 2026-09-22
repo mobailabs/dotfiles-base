@@ -1,0 +1,215 @@
+#!/usr/bin/env zsh
+# ============================================
+# Oh My Zsh 加载
+# ============================================
+# 性能优化：跳过一些检查以加快启动速度
+DISABLE_UPDATE_PROMPT=true
+DISABLE_AUTO_UPDATE=false
+
+[[ -f ~/.oh-my-zsh.sh ]] && source ~/.oh-my-zsh.sh
+
+# ============================================
+# 加载自定义配置文件
+# ============================================
+# exports - 应用特定环境变量
+[[ -f ~/.exports ]] && source ~/.exports
+
+# aliases - 命令别名
+[[ -f ~/.aliases ]] && source ~/.aliases
+
+# functions - 自定义函数
+[[ -f ~/.funcs ]] && source ~/.funcs
+
+# envconfig - 环境配置
+[[ -f ~/.envconfig ]] && source ~/.envconfig
+
+# OS config - 公共仓库提供的按平台覆盖（可选）
+[[ -f "$HOME/.config/dotfiles/os.zsh" ]] && source "$HOME/.config/dotfiles/os.zsh"
+
+# Local config - 本地特定配置（私有/机器差异）
+[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+
+# ============================================
+# Homebrew prefix detection (macOS + Linuxbrew)
+# ============================================
+if [[ -z "${HOMEBREW_PREFIX:-}" ]]; then
+  if [[ -x "/opt/homebrew/bin/brew" ]]; then
+    export HOMEBREW_PREFIX="/opt/homebrew"
+  elif [[ -x "/usr/local/bin/brew" ]]; then
+    export HOMEBREW_PREFIX="/usr/local"
+  elif [[ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]]; then
+    export HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+  fi
+fi
+
+# ============================================
+# 工具初始化（只在交互式 shell 中）
+# ============================================
+if [[ -o interactive ]]; then
+  # 禁用 Ctrl+S / Ctrl+Q 流量控制 (防止误按导致终端冻结)
+  [[ -t 0 ]] && stty -ixon || true
+
+  # GPG: pinentry needs correct TTY
+  if [[ -t 1 ]]; then
+    export GPG_TTY="$(tty 2>/dev/null || true)"
+  fi
+
+  # zoxide - 智能目录跳转
+  if command -v zoxide &>/dev/null; then
+    eval "$(zoxide init zsh)"
+  fi
+
+  # mise - 版本管理器
+  if command -v mise &>/dev/null; then
+    eval "$(mise activate zsh)"
+  fi
+
+  # # CCE Shell Integration
+  # if [[ -f ~/.cce/config.toml ]]; then
+  #   current_provider=$(awk -F\" '/^current_provider/ {print $2}' ~/.cce/config.toml)
+  #   if [[ -n "$current_provider" ]]; then
+  #     eval "$(CCE_SHELL_INTEGRATION=1 cce use "$current_provider")"
+  #   fi
+  # fi
+
+  # fzf - 模糊查找器（如果通过 Homebrew 安装）
+  if [[ -f "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
+    source "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh"
+  fi
+  if [[ -f "$HOMEBREW_PREFIX/opt/fzf/shell/key-bindings.zsh" ]]; then
+    source "$HOMEBREW_PREFIX/opt/fzf/shell/key-bindings.zsh"
+  fi
+fi
+
+# ============================================
+# Zsh 插件加载（通过 Homebrew 安装）
+# ============================================
+# 注意：zsh-autocomplete 和 zsh-autosuggestions 功能重叠
+# 推荐只启用其中一个以避免冲突
+#
+# 选项 1：使用 zsh-autocomplete（实时自动补全，更智能但可能较慢）
+# 选项 2：使用 zsh-autosuggestions（基于历史建议，更快但功能简单）
+#
+# 当前启用：zsh-autosuggestions（推荐，性能更好）
+
+# zsh-autocomplete（如果需要更强大的补全，取消注释并注释掉 zsh-autosuggestions）
+# 注意：zsh-autocomplete 必须在其他补全插件之前加载
+# if [[ -f "$HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh" ]]; then
+#   source "$HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
+# fi
+
+# zsh-autosuggestions（推荐，基于历史的快速建议）
+if [[ -f "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
+  source "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  # 配置建议颜色（可选）
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+fi
+
+# zsh-history-substring-search（历史搜索增强）
+if [[ -f "$HOMEBREW_PREFIX/share/zsh-history-substring-search/zsh-history-substring-search.zsh" ]]; then
+  source "$HOMEBREW_PREFIX/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
+  # 绑定上下箭头键
+  bindkey '^[[A' history-substring-search-up
+  bindkey '^[[B' history-substring-search-down
+fi
+
+# zsh-syntax-highlighting（语法高亮，必须最后加载）
+if [[ -f "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
+  source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+
+# ============================================
+# SSH helper
+# ============================================
+if [[ -f "$HOME/.zsh/zsh-ssh/zsh-ssh.zsh" ]]; then
+  source "$HOME/.zsh/zsh-ssh/zsh-ssh.zsh"
+fi
+
+# ============================================
+# Bun 补全
+# ============================================
+if [[ -s "$HOME/.bun/_bun" ]]; then
+  source "$HOME/.bun/_bun"
+fi
+
+# ============================================
+# 历史记录配置
+# ============================================
+HISTFILE=~/.zsh_history
+HISTSIZE=50000
+SAVEHIST=50000
+setopt EXTENDED_HISTORY          # 记录时间戳
+setopt HIST_EXPIRE_DUPS_FIRST    # 优先删除重复的历史记录
+setopt HIST_IGNORE_DUPS          # 不记录连续重复的命令
+setopt HIST_IGNORE_SPACE         # 忽略以空格开头的命令
+setopt HIST_VERIFY               # 历史扩展时先显示，不立即执行
+setopt SHARE_HISTORY             # 在多个 shell 之间共享历史记录
+setopt HIST_REDUCE_BLANKS        # 删除多余的空格
+setopt HIST_FIND_NO_DUPS         # 历史搜索时不显示重复项
+
+# ============================================
+# Zsh 选项
+# ============================================
+setopt AUTO_CD                   # 输入目录名自动 cd
+setopt AUTO_PUSHD                # cd 时自动 pushd
+setopt PUSHD_IGNORE_DUPS         # pushd 时忽略重复目录
+setopt CORRECT                   # 命令拼写纠正
+setopt INTERACTIVE_COMMENTS      # 允许在交互式 shell 中使用注释
+setopt NO_BEEP                   # 禁用蜂鸣声
+setopt MULTIOS                   # 允许多重重定向
+
+# ============================================
+# 键绑定
+# ============================================
+# 使用 Emacs 风格的键绑定（或者使用 bindkey -v 来使用 Vi 风格）
+bindkey -e
+
+# 额外的有用键绑定
+bindkey '^[[H' beginning-of-line      # Home 键
+bindkey '^[[F' end-of-line            # End 键
+bindkey '^[[3~' delete-char           # Delete 键
+bindkey '^[[1;5C' forward-word        # Ctrl+Right 前进一个词
+bindkey '^[[1;5D' backward-word       # Ctrl+Left 后退一个词
+
+# ============================================
+# tmux 环境提示（可选）
+# ============================================
+# 在 tmux 中显示一个小提示
+if [[ -n "$TMUX" ]]; then
+  # 可以在这里添加 tmux 特定的配置
+  # 例如：显示当前 tmux 会话名
+  # echo "📺 tmux session: $(tmux display-message -p '#S')"
+  :
+fi
+
+# ============================================
+# 性能优化
+# ============================================
+# 延迟加载重量级命令（如果需要）
+# 取消注释以启用延迟加载
+# autoload -Uz compinit
+# if [[ -n ${ZDOTDIR}/.zcompdump(#qN.mh+24) ]]; then
+#   compinit
+# else
+#   compinit -C
+# fi
+
+# ============================================
+# 启动时间测试（调试用）
+# ============================================
+# 测量 shell 启动时间
+# 使用方法：
+#   1. 在文件顶部添加：zmodload zsh/zprof
+#   2. 在文件底部取消下面的注释
+#   3. 重启 shell 查看性能分析
+# zprof
+
+if [[ -f "$HOME/.config/tmux/aliases.sh" ]]; then
+  source "$HOME/.config/tmux/aliases.sh"
+fi
+export PATH="$HOME/.npm-global/bin:$PATH"
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/Users/zhaopeng/.lmstudio/bin"
+# End of LM Studio CLI section
+

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Show CPU and battery in a compact way
+cpu=""
+bat=""
+
+# macOS / Linux CPU
+if command -v top >/dev/null 2>&1; then
+  idle=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage/ {print $7}' | tr -d '%idle')
+  [ -n "$idle" ] || idle=$(top -bn1 2>/dev/null | awk -F',' '/Cpu/ {for(i=1;i<=NF;i++) if($i~/id/) print $(i-1)}' | tr -d '%id')
+  [ -n "$idle" ] && cpu=$(awk -v i="$idle" 'BEGIN{printf "CPU:%d%%",100-i}')
+fi
+
+# Battery
+if command -v pmset >/dev/null 2>&1; then
+  bat=$(pmset -g batt | grep -Eo '[0-9]+%' | head -1)
+elif command -v acpi >/dev/null 2>&1; then
+  bat=$(acpi -b | grep -Eo '[0-9]+%' | head -1)
+fi
+
+echo -n "$cpu"
+[ -n "$bat" ] && echo -n " | BAT:$bat"

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Show git branch or short hash
+cd "$1" 2>/dev/null || exit 0
+branch=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)
+[ -n "$branch" ] && printf "%s" "$branch"

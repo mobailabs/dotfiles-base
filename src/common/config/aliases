@@ -1,0 +1,58 @@
+# General shell aliases
+# This file is sourced by ~/.zshrc
+
+# --- Core Shell ---
+alias c='clear'
+alias h='history'
+
+# Safety checks
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+alias grep='grep --color=auto'
+
+# --- Modern Replacements ---
+# Check if eza exists
+if command -v eza &> /dev/null; then
+  alias ls='eza'
+  alias ll='eza -l --icons --git -a'
+  alias lt='eza --tree --level=2'
+else
+  alias ll='ls -lah'
+fi
+
+# Check if bat exists
+if command -v bat &> /dev/null; then
+  alias cat='bat'
+fi
+
+# --- Git ---
+alias g='git'
+alias gs='git status'
+alias ga='git add'
+alias gaa='git add --all'
+alias gc='git commit -m'
+alias gco='git checkout'
+alias gp='git push'
+alias gl='git pull'
+alias gd='git diff'
+alias glo='git log --oneline --graph'
+
+# --- Navigation ---
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias ~='cd ~'
+alias -- -='cd -'
+
+# --- Docker ---
+alias d='docker'
+alias dc='docker-compose'
+
+# --- Mise ---
+alias m='mise'
+
+
+#
+alias v="nvim"
+alias hp='python3 -m http.server 9010'

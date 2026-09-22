@@ -1,0 +1,10 @@
+[user]
+    name = Your Name
+    email = you@example.com
+
+# Optional signing (configure per machine)
+# [commit]
+#     gpgsign = true
+# [gpg]
+#     program = /opt/homebrew/bin/gpg
+

@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+
+# Common login-shell init (kept minimal).
+# Homebrew shellenv is initialized via OS-specific zprofile overlays.
+

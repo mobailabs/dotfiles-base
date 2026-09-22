@@ -1,0 +1,6 @@
+# Private env overlay (non-sensitive defaults)
+# Recommended: keep secrets out of git; source a local-only file if needed.
+#
+# Example:
+# export COMPANY_REGION="cn"
+

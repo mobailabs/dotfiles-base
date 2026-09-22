@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+# 设置 locale 避免编码问题
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+export LC_CTYPE=en_US.UTF-8
+
+# Check for fzf dependency
+if ! command -v fzf &>/dev/null; then
+    echo "错误: fzf 未安装"
+    echo "安装: brew install fzf"
+    exit 1
+fi
+
+commands() {
+    # 合并多种命令来源
+    {
+        # --- tmux 管理 ---
+        echo "tmux source-file ~/.tmux.conf"
+        
+
+        # 用户自定义命令
+        tmux show-options -g -v @COMMANDS 2>/dev/null
+        
+        # 常用开发命令
+        echo "git status"
+        echo "git pull"
+        echo "git push"
+        echo "git log --oneline -10"
+        echo "git diff"
+        echo "git add ."
+        echo "git commit -m"
+        
+        # Node.js/前端开发
+        echo "npm install"
+        echo "npm run dev"
+        echo "npm run build"
+        echo "npm run test"
+        echo "yarn install"
+        echo "yarn dev"
+        echo "pnpm install"
+        echo "pnpm dev"
+        
+        # Docker 命令
+        echo "docker ps"
+        echo "docker ps -a"
+        echo "docker images"
+        echo "docker-compose up"
+        echo "docker-compose down"
+        echo "docker-compose logs"
+        
+        # Python 开发
+        echo "python -m venv venv"
+        echo "source venv/bin/activate"
+        echo "pip install -r requirements.txt"
+        echo "python -m pip install --upgrade pip"
+        
+        # 系统命令
+        echo "ls -la"
+        echo "ps aux"
+        echo "top"
+        echo "htop"
+        echo "df -h"
+        echo "du -sh"
+        echo "find . -name"
+        
+        # 从 shell 历史获取最近命令（去重）
+        # 使用 LC_ALL=C 避免编码问题
+        if [[ -f ~/.zsh_history ]]; then
+            LC_ALL=C tail -100 ~/.zsh_history 2>/dev/null | LC_ALL=C cut -d';' -f2- 2>/dev/null | LC_ALL=C sed 's/^[[:space:]]*//' | grep -v "^$"
+        elif [[ -f ~/.bash_history ]]; then
+            LC_ALL=C tail -100 ~/.bash_history 2>/dev/null | LC_ALL=C sed 's/^[[:space:]]*//' | grep -v "^$"
+        fi
+    } | LC_ALL=C sort -u | grep -v "^$"
+}
+
+# 使用 fzf 进行交互式选择，添加预览功能（用 printf 避免转义字符被解释）
+commands | fzf \
+    --no-sort \
+    --prompt "⚡ Command: " \
+    --preview 'printf "Execute: %s\n" {}' \
+    --preview-window=up:2:wrap \
+    --height 80% \
+    --border rounded \
+    --info=inline \
+    --layout=reverse \
+    --color=fg:#f2f2f7,bg:#1c1c1e,hl:#32ade6 \
+    --color=fg+:#ffffff,bg+:#2c2c2e,hl+:#5ac8fa \
+    --color=info:#8e8e93,prompt:#32ade6,pointer:#5ac8fa \
+    --color=marker:#30d158,spinner:#32ade6,header:#8e8e93

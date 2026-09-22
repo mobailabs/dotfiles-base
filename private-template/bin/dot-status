@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+DOTFILES_PRIVATE="${HOME}/.dotfiles-private"
+
+show_repo() {
+  name="$1"
+  dir="$2"
+
+  echo "== $name: $dir =="
+  if [ ! -d "$dir/.git" ]; then
+    echo "not a git repo"
+    echo
+    return 0
+  fi
+
+  git -C "$dir" status -sb || true
+  echo
+}
+
+main() {
+  show_repo "public" "$DOTFILES_PUBLIC"
+  show_repo "private" "$DOTFILES_PRIVATE"
+}
+
+main "$@"
+

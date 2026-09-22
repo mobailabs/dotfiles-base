@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+# If current shell is interactive and zsh exists, switch to zsh login shell.
+if [[ -t 1 && "$SHELL" != *"zsh" ]] && command -v zsh >/dev/null 2>&1; then
+  exec zsh -l
+fi

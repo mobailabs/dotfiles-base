@@ -1,0 +1,81 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+DOTFILES_PRIVATE="${HOME}/.dotfiles-private"
+
+say() { printf "%s\n" "$*"; }
+warn() { printf "WARN: %s\n" "$*" >&2; }
+fail() { printf "ERROR: %s\n" "$*" >&2; exit 1; }
+
+os_id() {
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin) echo macos ;;
+    Linux) echo linux ;;
+    *) echo unknown ;;
+  esac
+}
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+check_repo() {
+  name="$1"
+  dir="$2"
+  if [ ! -d "$dir" ]; then
+    warn "$name repo missing: $dir"
+    return 0
+  fi
+  if [ ! -d "$dir/.git" ]; then
+    warn "$name is not a git repo: $dir"
+    return 0
+  fi
+  branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  [ -n "$branch" ] && say "$name repo: $dir ($branch)" || say "$name repo: $dir"
+}
+
+main() {
+  os="$(os_id)"
+  [ "$os" != "unknown" ] || fail "unsupported OS: $(uname -s 2>/dev/null || echo unknown)"
+  say "OS: $os"
+
+  have zsh || warn "zsh not found (install scripts use zsh)"
+  have git || warn "git not found"
+  have curl || warn "curl not found"
+
+  check_repo "public" "$DOTFILES_PUBLIC"
+  check_repo "private" "$DOTFILES_PRIVATE"
+
+  if [ "$os" = "linux" ]; then
+    if [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+      say "brew: /home/linuxbrew/.linuxbrew/bin/brew"
+    elif have brew; then
+      say "brew: $(command -v brew)"
+    else
+      warn "brew not found (Linuxbrew expected at /home/linuxbrew/.linuxbrew)"
+    fi
+  else
+    if have brew; then
+      say "brew: $(command -v brew)"
+    else
+      warn "brew not found"
+    fi
+  fi
+
+  if have mise; then
+    say "mise: $(command -v mise)"
+  else
+    warn "mise not found"
+  fi
+
+  term="${TERM:-}"
+  if [ -n "$term" ]; then
+    say "TERM: $term"
+    if [ "$os" = "linux" ] && [ "$term" = "xterm-ghostty" ]; then
+      warn "TERM=xterm-ghostty may lack terminfo; this repo forces xterm-256color in Linux zsh os.zsh."
+    fi
+  fi
+}
+
+main "$@"
+

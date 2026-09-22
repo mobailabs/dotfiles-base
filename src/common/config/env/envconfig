@@ -1,0 +1,19 @@
+# 通用环境配置（非敏感），会被链接到 ~/.envconfig
+#
+# 注意：请在这里（envconfig）加载本地覆盖文件，而不是在 zshrc 里做这件事。
+# 例如：
+# export HTTP_PROXY=""
+# export HTTPS_PROXY=""
+
+export TERM=xterm-256color
+
+# Local env overlay (private/machine-specific)
+# If you use the private template, it will link ~/.envconfig.local for you.
+if [[ -f ~/.envconfig.local ]]; then
+  source ~/.envconfig.local
+fi
+
+alias pyv='python3 -m venv .venv'
+alias pya='source .venv/bin/activate'
+alias pyd='deactivate'
+alias pyi='pip install -r requirements.txt'

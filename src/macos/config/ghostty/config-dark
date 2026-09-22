@@ -1,0 +1,147 @@
+# Neo-Geometric Dark (冷青极客风) —— 与 tmux 保持一致
+# 主色: #32ade6 | 亮青: #5ac8fa | 背景: #1c1c1e | 前景: #f2f2f7
+
+# ---- 主题配色 ----
+background = #1c1c1e
+foreground = #f2f2f7                 
+
+selection-background = #3a3a3c       
+selection-foreground = #ffffff
+
+# 光标配色（用主色）
+cursor-color = #32ade6
+cursor-text = #ffffff
+
+# ANSI 16 色（深灰基底 + 冷青主色）
+# 0-7: 普通; 8-15: 亮色
+palette = 0=#1c1c1e
+palette = 1=#ff453a
+palette = 2=#30d158
+palette = 3=#ffd60a
+palette = 4=#32ade6
+palette = 5=#bf5af2
+palette = 6=#5ac8fa
+palette = 7=#f2f2f7
+palette = 8=#636366
+palette = 9=#ff6961
+palette = 10=#40e57c
+palette = 11=#ffe066
+palette = 12=#64d2ff
+palette = 13=#d684f7
+palette = 14=#64d2ff
+palette = 15=#ffffff
+
+# ---- Ghostty 行为 ----
+adjust-cell-height = 8%
+
+# 默认不自动进入 tmux，如需使用 tmux 请在 shell 中手动运行 tal/tcd 等命令
+
+# 剪贴板与选择
+copy-on-select = clipboard
+# 显式允许程序通过 OSC 52 写入系统剪贴板
+clipboard-write = allow
+# 鼠标选择优先：按住 Shift 时扩展终端选区
+mouse-shift-capture = true
+
+font-family = TX-02, LXGW WenKai
+font-size = 14
+font-thicken = true
+# 已有 font-thicken，避免过度加粗
+# font-style = Bold                  
+mouse-hide-while-typing = true
+
+# macOS 外观与窗口
+macos-option-as-alt = false
+# 使用原生边框但隐藏标题栏：保留圆角与阴影，更精致
+macos-titlebar-style = hidden
+window-decoration = false
+window-padding-color = extend
+window-padding-balance = true
+
+# 建议：避免保存旧缩放覆盖你改的字号
+window-save-state = never
+
+confirm-close-surface = false
+macos-icon = custom
+macos-custom-icon = ~/.config/ghostty/ghostty-white.icns
+
+# 设定初始窗口尺寸（按网格：列x行）
+#window-width = 220
+#window-height = 55
+maximize = true
+
+# 渲染与观感优化
+alpha-blending = linear-corrected
+background-opacity = 0.91
+background-opacity-cells = true
+macos-window-shadow = true
+window-step-resize = true
+unfocused-split-opacity = 0.85
+
+
+# create ghosttty window
+keybind = super+shift+n=new_window
+
+
+# ---- 快捷键（以 tmux 默认前缀 C-b 对齐：\x02）----
+# 新窗口 / 窗口切换 1-9
+keybind = super+t=text:\x02\x63
+keybind = super+physical:one=text:\x02\x31
+keybind = super+physical:two=text:\x02\x32
+keybind = super+physical:three=text:\x02\x33
+keybind = super+physical:four=text:\x02\x34
+keybind = super+physical:five=text:\x02\x35
+keybind = super+physical:six=text:\x02\x36
+keybind = super+physical:seven=text:\x02\x37
+keybind = super+physical:eight=text:\x02\x38
+keybind = super+physical:nine=text:\x02\x39
+
+# 面板导航（Vim hjkl）
+keybind = super+h=text:\x02h
+keybind = super+j=text:\x02j
+keybind = super+k=text:\x02k
+keybind = super+l=text:\x02l
+
+# 分割：super+d 垂直（tmux -v, "），super+Enter 水平（tmux -h, %）
+keybind = super+d=text:\x02\x22
+keybind = super+enter=text:\x02\x25
+
+# 关闭面板
+keybind = super+w=text:\x02x
+
+# 面板缩放/全屏切换
+keybind = super+z=text:\x02z
+
+# 窗口切换（上一个/下一个）
+keybind = super+left_bracket=text:\x02p
+keybind = super+right_bracket=text:\x02n
+
+# 快速进入 tmux 复制模式
+keybind = super+e=text:\x02[
+
+# 切换到上一个活动面板
+keybind = super+semicolon=text:\x02;
+
+# 面板大小调整（Shift+HJKL）
+keybind = super+shift+h=text:\x02H
+keybind = super+shift+j=text:\x02J
+keybind = super+shift+k=text:\x02K
+keybind = super+shift+l=text:\x02L
+
+# 同步面板输入
+keybind = super+shift+i=text:\x02I
+
+# 会话管理
+keybind = super+n=text:\x02N
+keybind = super+o=text:\x02S
+keybind = super+shift+x=text:\x02X
+keybind = super+p=text:\x02P
+
+# 命令弹窗
+keybind = super+r=text:\x02R
+
+# 额外快捷键
+keybind = super+comma=text:\x02,
+keybind = super+shift+comma=text:\x02$
+keybind = super+c=copy_to_clipboard
+keybind = super+v=paste_from_clipboard

@@ -1,0 +1,2 @@
+# macOS private casks (GUI apps/fonts), not used on Linux servers
+

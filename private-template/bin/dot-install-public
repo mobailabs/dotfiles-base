@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+
+die() { echo "dot-install-public: $*" >&2; exit 1; }
+
+os_id() {
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin) echo macos ;;
+    Linux) echo linux ;;
+    *) echo unknown ;;
+  esac
+}
+
+main() {
+  [ -d "$DOTFILES_PUBLIC" ] || die "public repo not found: $DOTFILES_PUBLIC"
+
+  case "$(os_id)" in
+    macos)
+      [ -f "$DOTFILES_PUBLIC/install.zsh" ] || die "missing: $DOTFILES_PUBLIC/install.zsh"
+      exec zsh "$DOTFILES_PUBLIC/install.zsh"
+      ;;
+    linux)
+      [ -f "$DOTFILES_PUBLIC/install.sh" ] || die "missing: $DOTFILES_PUBLIC/install.sh"
+      exec "$DOTFILES_PUBLIC/install.sh"
+      ;;
+    *)
+      die "unsupported OS: $(uname -s 2>/dev/null || echo unknown)"
+      ;;
+  esac
+}
+
+main "$@"
+

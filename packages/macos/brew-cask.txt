@@ -1,0 +1,57 @@
+# IDE & Code Editors
+claude-code
+cursor
+cursor-cli
+datagrip
+goland
+intellij-idea-ce
+jd-gui
+zed
+
+# Terminal & System Tools
+ghostty
+karabiner-elements
+openinterminal
+tailscale-app
+
+# Fonts
+font-comic-shanns-mono-nerd-font
+font-lxgw-bright-gb
+font-lxgw-wenkai
+font-maple-mono
+font-maple-mono-cn
+font-maple-mono-nf
+font-maple-mono-nf-cn
+
+# Development Tools
+gpg-suite
+xcodes-app
+httpie-desktop
+antigravity
+
+# AI & Chat
+chatgpt
+lark
+wechat
+
+# Utilities
+contexts
+homerow
+input-source-pro
+keka
+microsoft-auto-update
+microsoft-edge
+google-chrome
+mos
+omnidisksweeper
+pearcleaner
+popclip
+only-switch
+onedrive
+
+# Design & Graphics
+inkscape
+
+# Communication
+qq
+telegram

@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+# Check for fzf dependency
+if ! command -v fzf &>/dev/null; then
+    echo "错误: fzf 未安装"
+    echo "安装: brew install fzf"
+    exit 1
+fi
+
+sessions() {
+  tmux show-options -g -v @SESSIONS 2> /dev/null || tmux list-sessions -F '#{session_name}' 2> /dev/null
+}
+
+servers() {
+  (tmux show-options -g -v @SERVERS 2> /dev/null | awk '{print "@" $1}') || (test -f ~/.ssh/config && cat ~/.ssh/config | grep "^Host " | awk '{print $2}' | grep -v "*")
+}
+
+search() {
+  (sessions; [[ $ALL == true ]] && servers) | tr ' ' '\n' | grep -v "^$" | nl -w 1 -s ": " | fzf --no-sort --prompt "﬿ " | awk '{print $2}'
+}
+
+ALL=false
+if [[ $# -eq 1 ]]; then
+  case "$1" in
+    --all)
+      ALL=true
+      ;;
+    *)
+      SESSION=$1
+      ;;
+  esac
+fi
+
+if [[ -z $SESSION ]]; then
+    SESSION=$(search)
+fi
+
+if [[ -z $SESSION ]]; then
+    exit 0
+fi
+
+if [[ $SESSION  =~ "@" ]]; then
+  SERVER=$(echo $SESSION | cut -d@ -f2)
+  SESSION=$(echo $SESSION | cut -d@ -f1)
+  
+  # Find zsh path dynamically
+  ZSH_PATH=$(command -v zsh || echo "/bin/zsh")
+  
+  # Use autossh if available, fallback to ssh
+  if command -v autossh &>/dev/null; then
+    exec autossh -M0 -t $SERVER "$ZSH_PATH" --login --command "tmux-sessions $SESSION"
+  else
+    exec ssh -t $SERVER "$ZSH_PATH" --login --command "tmux-sessions $SESSION"
+  fi
+else
+  # new session if session is not available
+  tmux_running=$(pgrep tmux)
+  if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
+    tmux new-session -A -D -s $SESSION
+  else
+    if ! tmux has-session -t $SESSION 2> /dev/null; then
+      # Set default PROJECTS directory
+      PROJECTS="${PROJECTS:-$HOME/projects}"
+      WORKING_DIRECTORY="$PROJECTS/$SESSION"
+      
+      # Fix path to sessions directory
+      INITIAL_FILE="$HOME/.config/tmux/sessions/$SESSION.tmux.conf"
+      if [[ -f "$INITIAL_FILE" ]]; then
+        INITIAL_COMMAND="tmux source-file $INITIAL_FILE"
+      fi
+      if [[ ! -d "$WORKING_DIRECTORY" ]]; then
+        WORKING_DIRECTORY="$HOME"
+      fi
+      tmux new-session -ds $SESSION -c "$WORKING_DIRECTORY" $INITIAL_COMMAND
+    fi
+    if [[ -z $TMUX ]]; then
+      tmux new-session -A -D -s $SESSION
+    else
+      tmux switch-client -t $SESSION
+    fi
+  fi
+fi

@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+DOTFILES_PRIVATE="${HOME}/.dotfiles-private"
+
+die() { echo "dot-update: $*" >&2; exit 1; }
+
+ensure_clean() {
+  dir="$1"
+  name="$2"
+
+  [ -d "$dir/.git" ] || die "$name repo is not a git repo: $dir"
+  dirty="$(git -C "$dir" status --porcelain=v1 || true)"
+  [ -z "$dirty" ] || die "$name repo has uncommitted changes: $dir"
+}
+
+pull_rebase() {
+  dir="$1"
+  name="$2"
+
+  echo "Updating $name: $dir"
+  git -C "$dir" pull --rebase
+}
+
+main() {
+  [ -d "$DOTFILES_PUBLIC" ] || die "public repo not found: $DOTFILES_PUBLIC"
+  [ -d "$DOTFILES_PRIVATE" ] || die "private repo not found: $DOTFILES_PRIVATE"
+
+  ensure_clean "$DOTFILES_PUBLIC" "public"
+  ensure_clean "$DOTFILES_PRIVATE" "private"
+
+  pull_rebase "$DOTFILES_PUBLIC" "public"
+  pull_rebase "$DOTFILES_PRIVATE" "private"
+
+  echo "Reinstalling..."
+  exec "$DOTFILES_PRIVATE/bin/dot-install"
+}
+
+main "$@"
+

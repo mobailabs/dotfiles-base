@@ -1,0 +1,63 @@
+#!/usr/bin/env zsh
+
+# ============================================
+# .zshenv - 核心环境变量配置
+# ============================================
+# 这个文件在所有 zsh 实例中都会加载（login/non-login, interactive/non-interactive）
+# 适合设置 PATH 和核心环境变量
+# 注意：不要在这里输出任何内容，会影响非交互式脚本
+
+# ============================================
+# 编辑器配置
+# ============================================
+export EDITOR=nvim
+export VISUAL=nvim
+
+# ============================================
+# 语言和编码
+# ============================================
+export LC_ALL="en_US.UTF-8"
+export LANG="en_US.UTF-8"
+
+# ============================================
+# PATH 配置 - 使用 typeset -U 确保路径唯一
+# ============================================
+typeset -U path  # 确保 PATH 中的路径不重复
+
+# 用户自定义路径（跨平台）
+#
+# 一律加存在性判断。一个不存在的目录进 PATH 不会报错，但会让你以为那里有东西
+# —— 这几行以前是无条件加的，`$HOME/.dotfiles/bin` 指向一个从来不存在的目录，
+# 而且那个仓库名在本机根本不存在（真实路径是 ~/dotfiles）。
+#
+# **位置很重要**：这两个目录原本在 PATH 最前面，必须保持。
+# 用 `path+=(...)` 追加到末尾会把优先级降到最低，结果是你自己装的 CLI
+# 被系统里的同名命令遮住。所以下面用 _pre 攒好再整体前置。
+#
+# 私有仓库的 bin 不在这里处理：`~/.zshrc.local` 里已经用
+# `$DOTFILES_PRIVATE_ROOT/bin` 条件加过了，那才是它的归属。
+_pre=()
+[[ -d "$HOME/.bin" ]] && _pre+=("$HOME/.bin")
+[[ -d "$HOME/.local/bin" ]] && _pre+=("$HOME/.local/bin")
+path=($_pre $path)
+unset _pre
+
+# 条件添加语言工具路径
+[[ -d "$HOME/go/bin" ]] && path+=("$HOME/go/bin")
+[[ -d "$HOME/.go/bin" ]] && path+=("$HOME/.go/bin")
+[[ -d "$HOME/.cargo/bin" ]] && path+=("$HOME/.cargo/bin")
+
+# tmux 工具路径
+[[ -d "$HOME/.config/tmux/bin" ]] && path+=("$HOME/.config/tmux/bin")
+
+# Bun 路径
+[[ -d "$HOME/.bun/bin" ]] && path+=("$HOME/.bun/bin")
+
+# 导出 PATH
+export PATH
+
+# ============================================
+# 其他核心环境变量
+# ============================================
+# Don't clear the screen after quitting a manual page
+export MANPAGER="less -X"

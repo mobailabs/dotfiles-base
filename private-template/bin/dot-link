@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+DOTFILES_PRIVATE="${HOME}/.dotfiles-private"
+
+die() { echo "dot-link: $*" >&2; exit 1; }
+
+main() {
+  [ -d "$DOTFILES_PUBLIC" ] || die "public repo not found: $DOTFILES_PUBLIC"
+  [ -d "$DOTFILES_PRIVATE" ] || die "private repo not found: $DOTFILES_PRIVATE"
+
+  [ -f "$DOTFILES_PUBLIC/scripts/common/link-dotfiles.zsh" ] || die "missing: $DOTFILES_PUBLIC/scripts/common/link-dotfiles.zsh"
+  [ -f "$DOTFILES_PRIVATE/scripts/common/link-private.zsh" ] || die "missing: $DOTFILES_PRIVATE/scripts/common/link-private.zsh"
+
+  echo "[1/2] Linking public dotfiles..."
+  zsh "$DOTFILES_PUBLIC/scripts/common/link-dotfiles.zsh"
+
+  echo "[2/2] Linking private dotfiles..."
+  zsh "$DOTFILES_PRIVATE/scripts/common/link-private.zsh"
+}
+
+main "$@"
+

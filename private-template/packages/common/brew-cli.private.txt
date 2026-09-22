@@ -1,0 +1,6 @@
+# Private extra CLI packages (macOS + Linuxbrew)
+# Put shared additions here; keep it small.
+
+# Secrets management (used by scripts/secret-helper.zsh)
+git-secret
+gnupg

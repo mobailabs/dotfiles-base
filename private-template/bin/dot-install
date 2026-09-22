@@ -1,0 +1,53 @@
+#!/usr/bin/env sh
+
+set -eu
+
+DOTFILES_PUBLIC="${HOME}/.dotfiles"
+DOTFILES_PRIVATE="${HOME}/.dotfiles-private"
+
+die() { echo "dot-install: $*" >&2; exit 1; }
+
+os_id() {
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    Darwin) echo macos ;;
+    Linux) echo linux ;;
+    *) echo unknown ;;
+  esac
+}
+
+require_file() { [ -f "$1" ] || die "missing file: $1"; }
+
+run_public() {
+  case "$(os_id)" in
+    macos)
+      require_file "$DOTFILES_PUBLIC/install.zsh"
+      exec zsh "$DOTFILES_PUBLIC/install.zsh"
+      ;;
+    linux)
+      require_file "$DOTFILES_PUBLIC/install.sh"
+      exec "$DOTFILES_PUBLIC/install.sh"
+      ;;
+    *)
+      die "unsupported OS: $(uname -s 2>/dev/null || echo unknown)"
+      ;;
+  esac
+}
+
+run_private() {
+  require_file "$DOTFILES_PRIVATE/install.zsh"
+  exec zsh "$DOTFILES_PRIVATE/install.zsh"
+}
+
+main() {
+  [ -d "$DOTFILES_PUBLIC" ] || die "public repo not found: $DOTFILES_PUBLIC"
+  [ -d "$DOTFILES_PRIVATE" ] || die "private repo not found: $DOTFILES_PRIVATE"
+
+  echo "[1/2] Installing public dotfiles from $DOTFILES_PUBLIC ..."
+  (run_public)
+
+  echo "[2/2] Installing private dotfiles from $DOTFILES_PRIVATE ..."
+  run_private
+}
+
+main "$@"
+
