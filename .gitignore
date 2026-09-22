@@ -1,2 +1,5 @@
+# macOS 元数据（Finder 自动生成，永远不该进仓库）
+# 用 **/ 匹配任意层级，而不只是根目录 —— 之前只有一行 `.DS_Store`，
+# 只挡住根目录，子目录里的照样会被 `git add .` 带进来。
 .DS_Store
-src/macos/config/ghostty/config
+**/.DS_Store

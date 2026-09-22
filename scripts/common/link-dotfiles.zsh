@@ -48,6 +48,8 @@ DOTFILE_LINKS=(
   'zsh/zprofile|.zprofile'
   'zsh/zshrc|.zshrc'
   'aliases|.aliases'
+  'env/exports|.exports'
+  'shell/funcs|.funcs'
   'zsh/oh-my-zsh.sh|.oh-my-zsh.sh'
   'zsh/os.zsh|.config/dotfiles/os.zsh'
   'zsh/ohmyzsh.plugins.zsh|.config/dotfiles/ohmyzsh.plugins.zsh'

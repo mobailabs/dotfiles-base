@@ -13,6 +13,7 @@ Commands:
                    zsh plugins, link dotfiles, tmux plugins, mise, macOS prefs
   prefs            Apply macOS preferences only (re-runnable, idempotent)
   link             Link dotfiles only
+  audit            Report declared-but-not-installed brew packages (read-only)
   help             Show this help
 
 后续所有定制通过编辑 src/**/config/*、packages/*.txt 完成。
@@ -36,16 +37,6 @@ run_base() {
   "$SCRIPT_DIR/scripts/common/tmux-plugins-install.zsh"
   "$SCRIPT_DIR/scripts/common/mise-setup.zsh"
 
-  # ghostty 的 `config` 是「当前主题」的指针，被 .gitignore 排除 ——
-  # 因为 eink-on/off 用 `ln -sf` 切它，提交了每次切主题都会弄脏工作区。
-  # 代价是：新克隆的仓库里没有这个文件，ghostty 会以默认配置启动。
-  # 这里补一个默认值。
-  ghostty_dir="$SCRIPT_DIR/src/macos/config/ghostty"
-  if [[ ! -e "$ghostty_dir/config" && -e "$ghostty_dir/config-dark" ]]; then
-    ln -s config-dark "$ghostty_dir/config"
-    echo "ghostty: 没有当前主题，已设为 config-dark"
-  fi
-
   # 偏好放在最后，而且**失败不中断**：
   # 它可能要求 sudo，你按了取消也不该让前面装好的东西白费。
   # 这是旧仓库最大的坑 —— prefs.zsh 一直没进 base 流程，
@@ -64,6 +55,7 @@ main() {
     base) run_base ;;
     prefs) "$SCRIPT_DIR/scripts/macos/prefs.zsh" ;;
     link) "$SCRIPT_DIR/scripts/common/link-dotfiles.zsh" ;;
+    audit) "$SCRIPT_DIR/scripts/common/brew-audit.zsh" ;;
     help|-h|--help) usage ;;
     *)
       echo "Unknown command: $cmd" >&2

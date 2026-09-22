@@ -43,6 +43,11 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 | `zsh install.zsh` | 全套（`base`） |
 | `zsh install.zsh link` | 只重新链接配置 |
 | `zsh install.zsh prefs` | 只重新应用 macOS 偏好（幂等，可随时重跑） |
+| `zsh install.zsh audit` | **对账**：清单里声明、这台没装的包（只读，不改机器） |
+| `zsh install.zsh help` | 用法 |
+
+`audit` 是 macview「看见差异」的命令行版：它和 macview 读同一批
+`packages/*.txt`、用同一套解析规则，所以两边给出的答案一致。
 
 ---
 
@@ -55,13 +60,28 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 │   ├── common/brew-cli.txt
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
-│   ├── common/              ← brew / 插件 / 链接 / mise
+│   ├── common/              ← brew / 插件 / 链接 / mise / 对账
 │   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
-├── src/
-│   ├── macos/config/        ← 配置源（只有 macOS，没有平台分层）
+├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
 ```
 
 `src/` 里的东西**不直接生效** —— 它们是源，被链接到 `$HOME` 才生效。
+
+---
+
+## 包清单的格式（**别改**）
+
+`packages/*/brew-*.txt` 的格式是**共享契约**，有两个读者：
+`scripts/common/brew-packages-install.zsh`（装）和 macview（对账）。
+规则（两边必须一致）：
+
+- 一行一个包，`#` 之后是注释
+- 取每行**第一个空白分隔**的字段
+- 带 tap 的写全路径 `user/tap/formula`（brew 会顺带自动 tap）；
+  两边比对时都取 **basename**（`im-select`）去和 `brew list` 比
+
+**不要**引入 `tap:`、`mas:` 之类的前缀语法 —— macview 的解析器不认，
+会让两边静默漂移。
 
 ---
 
@@ -77,6 +97,10 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 | `~/.envconfig.local` | `if [[ -f ~/.envconfig.local ]]; then source` | `src/macos/config/env/envconfig` |
 | `~/.ssh/config.local` | `Include ~/.ssh/config.local` | `~/.ssh/config`（本机私密文件，不在仓库里） |
 
+反向也要成立：**标准文件里 source 的每个文件，都必须真有一个源**。
+`~/.exports` 和 `~/.funcs` 曾经是悬空的（zshrc 在 source，但源不存在），
+现在已在 `env/exports`、`shell/funcs` 补上并登记进 `DOTFILE_LINKS`。
+
 **加一个新的 `.local` 落点时，必须同时在标准文件里加加载点。** 只加一半等于没加。
 
 `Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
@@ -87,11 +111,12 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 
 | 想改什么 | 改哪 |
 |---|---|
-| 加一个要链接的配置文件 | `scripts/common/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/**/config/` 放源 |
+| 加一个要链接的配置文件 | `scripts/common/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/macos/config/` 放源 |
 | 加一个要装的软件 | `packages/{common,macos}/brew-*.txt` |
-| 改 shell 别名 | `src/macos/config/aliases` |
+| 改 shell 别名 | `src/macos/config/aliases`（一行别名）/ `src/macos/config/shell/funcs`（函数） |
 | 改系统偏好 | `scripts/macos/prefs.d/*.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
+| 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/common/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
 | 加一个机器专属的东西 | 私有仓库，**不是这里** |
 
 判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有仓库。**
@@ -127,7 +152,7 @@ DOTFILE_LINKS=(
 
 ## 和 macview 的关系
 
-[macview](https://github.com/zhaopengme/macview) 是这套标准的图形界面：
+[macview](https://github.com/mobailabs/macview) 是这套标准的图形界面：
 **看见差异 → 一键对齐**。
 
 它读的就是这个仓库 —— `scripts/common/link-dotfiles.zsh` 的落点、`packages/*.txt`、

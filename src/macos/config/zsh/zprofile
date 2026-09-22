@@ -9,11 +9,10 @@
 # ============================================
 # Homebrew 环境初始化
 # ============================================
-# brew shellenv 会设置 HOMEBREW_* 变量和添加 PATH
-if [[ -x "/opt/homebrew/bin/brew" ]]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-elif [[ -x "/usr/local/bin/brew" ]]; then
-  eval "$(/usr/local/bin/brew shellenv)"
-elif command -v brew >/dev/null 2>&1; then
+# 探测已收进 .zshenv（所有 shell 都会加载，且排在 .zprofile 之前）。
+# 这里只负责把 brew 的 shell 集成（补全、man path 等）拉进来。
+#
+# 不重复写 /opt/homebrew 判断：HOMEBREW_PREFIX 由 .zshenv 设好。
+if command -v brew >/dev/null 2>&1; then
   eval "$(brew shellenv)"
 fi

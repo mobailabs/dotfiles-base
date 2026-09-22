@@ -1,6 +1,29 @@
 #!/usr/bin/env zsh
+#
+# 按 packages/*/brew-*.txt 装包。
+#
+# ## 文件格式（**不要改** —— macview 用同一套解析规则读它）
+#
+#   - 一行一个包；`#` 之后是注释
+#   - 取每行第一个空白分隔字段
+#   - 带 tap 的写全路径：`user/tap/formula`（brew 会顺带自动 tap）
+#
+# macview 的解析器（Sources/MacViewCore/Diff/Software.swift）就是这三条，
+# 并把 `user/tap/formula` 取 basename 得到 `formula` 去和 `brew list` 比。
+# 所以**不要**引入 `tap:`、`mas:` 之类的前缀语法 —— 那会让两边漂移。
+#
+# ## 这次补的能力
+#
+#   1. 「已安装」检查用 basename：`brew list` 只认 `im-select`，
+#      不认 `daipeihust/tap/im-select`。以前直接拿整行去查，带 tap 的包
+#      每次都判为「没装」→ 每次都重装。现在查用 basename、装用全路径。
+#   2. 失败汇总：默认跳过失败项继续，结束后统一报告（见 EXIT 段），
+#      不再因为一个包失败就中断整轮 —— 但用 `set -o pipefail` 保住错误可见。
+#   3. `--dry-run` / `DRY_RUN=1`：只打印将要做什么，不真的装。
+#
+# 退出码：全部成功 0；有失败 1。便于 install.zsh 和 CI 判断。
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${0:A}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -8,11 +31,20 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 log() { echo "[brew] $*"; }
 die() { echo "[brew] $*" >&2; exit 1; }
 
+DRY_RUN="${DRY_RUN:-0}"
+
 os_id() {
   case "$(uname -s)" in
     Darwin) echo "macos" ;;
     *) die "Unsupported OS: $(uname -s)（这个仓库只做 macOS）" ;;
   esac
+}
+
+# 取路径最后一段：`daipeihust/tap/im-select` → `im-select`。
+# 与 macview 的 basename() 保持一致 —— 两边的「这个包叫什么」必须同一个答案。
+basename_of() {
+  local name="$1"
+  echo "${name##*/}"
 }
 
 read_list() {
@@ -30,22 +62,41 @@ read_list() {
 
 install_formula() {
   local pkg="$1"
-  if brew list --formula "$pkg" >/dev/null 2>&1 < /dev/null; then
-    log "formula already installed: $pkg"
-  else
-    log "installing formula: $pkg"
-    brew install "$pkg" < /dev/null
+  local base
+  base="$(basename_of "$pkg")"
+
+  if brew list --formula "$base" >/dev/null 2>&1 </dev/null; then
+    log "formula already installed: $base"
+    return 0
   fi
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "would install formula: $pkg"
+    return 0
+  fi
+
+  log "installing formula: $pkg"
+  # 用全路径装：brew 会顺带 tap（`user/tap/formula`）。
+  brew install "$pkg" </dev/null
 }
 
 install_cask() {
   local pkg="$1"
-  if brew list --cask "$pkg" >/dev/null 2>&1 < /dev/null; then
-    log "cask already installed: $pkg"
-  else
-    log "installing cask: $pkg"
-    brew install --cask "$pkg" < /dev/null
+  local base
+  base="$(basename_of "$pkg")"
+
+  if brew list --cask "$base" >/dev/null 2>&1 </dev/null; then
+    log "cask already installed: $base"
+    return 0
   fi
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "would install cask: $pkg"
+    return 0
+  fi
+
+  log "installing cask: $pkg"
+  brew install --cask "$pkg" </dev/null
 }
 
 main() {
@@ -63,14 +114,17 @@ main() {
   local macos_cask="$ROOT_DIR/packages/macos/brew-cask.txt"
 
   log "running: brew update"
-  brew update
+  [[ "$DRY_RUN" == "1" ]] || brew update
+
+  # 收集失败项，最后一并报告 —— 一个包失败不该让其余的不装。
+  local failed=() p
 
   local pkgs
   pkgs="$( { read_list "$common_cli"; read_list "$os_cli"; } | sort -u )"
   if [[ -n "$pkgs" ]]; then
     while IFS= read -r p; do
       [[ -n "$p" ]] || continue
-      install_formula "$p"
+      install_formula "$p" || failed+=("formula:$p")
     done <<<"$pkgs"
   fi
 
@@ -80,11 +134,19 @@ main() {
     if [[ -n "$casks" ]]; then
       while IFS= read -r c; do
         [[ -n "$c" ]] || continue
-        install_cask "$c"
+        install_cask "$c" || failed+=("cask:$c")
       done <<<"$casks"
     fi
   fi
+
+  if (( ${#failed[@]} > 0 )); then
+    echo "" >&2
+    echo "[brew] 完成，但 ${#failed[@]} 个包失败：${failed[*]}" >&2
+    echo "[brew] 可以单独重试，或先看上面的报错。" >&2
+    exit 1
+  fi
+
+  log "全部完成。"
 }
 
 main "$@"
-

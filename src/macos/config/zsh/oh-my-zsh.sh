@@ -58,14 +58,14 @@ if [[ -f "$HOME/.config/dotfiles/ohmyzsh.plugins.zsh" ]]; then
 fi
 
 # ============================================
-# 加载 Oh My Zsh（若未安装则静默跳过）
+# 加载 Oh My Zsh（若未安装则整段跳过，不中断调用者）
 # ============================================
-
+#
+# 以前这里用文件末尾的 `return 0 || exit 0` 来「没装 omz 也不报错」，
+# 那是个隐患：当本文件被 `source`（而不是作为顶层 zshrc 执行）时，
+# `return` 会**提前终止调用者的加载**，后面的配置全部丢失且静默。
+# 现在改成把加载逻辑整段包进 if，不存在就什么都不做。
 if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
   # shellcheck source=/dev/null
   source "$ZSH/oh-my-zsh.sh"
-else
-  # 未安装 Oh My Zsh 时，不报错，直接返回
-  # 这样在新环境还没装 oh-my-zsh 之前，Zsh 也能正常工作
-  return 0 2>/dev/null || exit 0
 fi

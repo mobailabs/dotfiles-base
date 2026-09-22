@@ -6,22 +6,58 @@ return {
 		opts = function(_, opts)
 			local utils = require("astrocore")
 
+			-- 定位 Java 21 runtime。
+			-- 不写死用户名/版本号：优先用 JAVA_HOME（mise/JDK 管理器一般会设），
+			-- 否则回退到 mise 的 java 安装目录里第一个能用的 JDK。
+			local function find_java_home()
+				if vim.env.JAVA_HOME and vim.uv.fs_stat(vim.env.JAVA_HOME) then
+					return vim.env.JAVA_HOME
+				end
+
+				local candidates = {
+					vim.fn.expand("~/.local/share/mise/installs/java"),
+					"/opt/homebrew/opt/openjdk@21",
+					"/usr/local/opt/openjdk@21",
+					"/Library/Java/JavaVirtualMachines",
+				}
+
+				for _, base in ipairs(candidates) do
+					local ok, entries = pcall(vim.fn.readdir, base)
+					if ok and entries then
+						-- readdir 顺序不稳定，排序保证可复现
+						table.sort(entries)
+						for _, entry in ipairs(entries) do
+							local dir = base .. "/" .. entry
+							if vim.uv.fs_stat(dir .. "/bin/java") then
+								return dir
+							end
+						end
+					end
+				end
+
+				return nil
+			end
+
+			local java_home = find_java_home()
+
 			-- 添加 Java runtimes 配置
 			opts.settings = opts.settings or {}
 			opts.settings.java = opts.settings.java or {}
 			opts.settings.java.configuration = opts.settings.java.configuration or {}
-			opts.settings.java.configuration.runtimes = {
-				{
-					name = "JavaSE-21",
-					path = "/Users/zhaopeng/.local/share/mise/installs/java/zulu-21.46.19.0",
-					default = true,
-				},
-			}
+			if java_home then
+				opts.settings.java.configuration.runtimes = {
+					{
+						name = "JavaSE-21",
+						path = java_home,
+						default = true,
+					},
+				}
 
-			-- 强制使用 Java 21 进行调试
-			opts.init_options = opts.init_options or {}
-			opts.init_options.java = opts.init_options.java or {}
-			opts.init_options.java.javaExec = "/Users/zhaopeng/.local/share/mise/installs/java/zulu-21.46.19.0/bin/java"
+				-- 强制使用找到的 Java 进行调试
+				opts.init_options = opts.init_options or {}
+				opts.init_options.java = opts.init_options.java or {}
+				opts.init_options.java.javaExec = java_home .. "/bin/java"
+			end
 
 			-- 项目根目录标记（优先找 pom.xml）
 			local root_markers = { "pom.xml", "build.gradle", "mvnw", "gradlew", ".git" }

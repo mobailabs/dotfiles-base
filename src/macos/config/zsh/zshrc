@@ -30,14 +30,13 @@ DISABLE_AUTO_UPDATE=false
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
 # ============================================
-# Homebrew prefix detection
+# Homebrew prefix
 # ============================================
-if [[ -z "${HOMEBREW_PREFIX:-}" ]]; then
-  if [[ -x "/opt/homebrew/bin/brew" ]]; then
-    export HOMEBREW_PREFIX="/opt/homebrew"
-  elif [[ -x "/usr/local/bin/brew" ]]; then
-    export HOMEBREW_PREFIX="/usr/local"
-  fi
+# 探测在 .zshenv 里（所有 shell 都加载，且先于本文件）。
+# 这里只做兜底：如果用户在 .zshenv 之后又改了 PATH，保证 HOMEBREW_PREFIX 有值。
+# 正常路径下 .zshenv 已经设好，这个 if 不会进入。
+if [[ -z "${HOMEBREW_PREFIX:-}" && -x "/opt/homebrew/bin/brew" ]]; then
+  export HOMEBREW_PREFIX="/opt/homebrew"
 fi
 
 # ============================================
@@ -207,7 +206,6 @@ if [[ -f "$HOME/.config/tmux/aliases.sh" ]]; then
 fi
 export PATH="$HOME/.npm-global/bin:$PATH"
 
-# Added by LM Studio CLI (lms)
-export PATH="$PATH:/Users/zhaopeng/.lmstudio/bin"
-# End of LM Studio CLI section
+# LM Studio CLI (lms) —— 只在目录存在时加入 PATH，不写死用户名
+[[ -d "$HOME/.lmstudio/bin" ]] && path+=("$HOME/.lmstudio/bin")
 
