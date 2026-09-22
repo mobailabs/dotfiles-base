@@ -1,8 +1,0 @@
-# Private zsh overlay (aliases, company functions, machine-specific tweaks)
-
-# Private repo bin directory (recommended)
-# - Clone your private repo to $HOME/private-dotfiles, or set DOTFILES_PRIVATE_ROOT to its location.
-export DOTFILES_PRIVATE_ROOT="${DOTFILES_PRIVATE_ROOT:-$HOME/private-dotfiles}"
-if [[ -d "$DOTFILES_PRIVATE_ROOT/bin" ]]; then
-  path=("$DOTFILES_PRIVATE_ROOT/bin" $path)
-fi

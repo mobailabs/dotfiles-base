@@ -2,7 +2,9 @@ return {
   "keaising/im-select.nvim",
   config = function()
     require("im_select").setup({
-        default_command = vim.fn.expand("$HOME/dotfiles/src/common/bin/im-select"),
+        -- im-select 由 Homebrew 装（packages/macos/brew-cli.txt），直接在 PATH 里。
+        -- 以前这里指向仓库内的一个包装脚本，那个包装已经删了。
+        default_command = "im-select",
         default_im_select = "com.apple.keylayout.ABC",
         set_default_events = { "VimEnter", "FocusGained", "InsertLeave", "CmdlineLeave" },
         set_previous_events = { "InsertEnter" },

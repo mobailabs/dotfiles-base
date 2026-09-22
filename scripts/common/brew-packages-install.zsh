@@ -11,8 +11,7 @@ die() { echo "[brew] $*" >&2; exit 1; }
 os_id() {
   case "$(uname -s)" in
     Darwin) echo "macos" ;;
-    Linux) echo "linux" ;;
-    *) die "Unsupported OS: $(uname -s)" ;;
+    *) die "Unsupported OS: $(uname -s)（这个仓库只做 macOS）" ;;
   esac
 }
 

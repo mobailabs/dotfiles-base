@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 
-# If current shell is interactive and zsh exists, switch to zsh login shell.
+# LM Studio CLI 在 PATH 里。两个历史路径都试 —— 旧版装在 .cache 下，
+# 新版装在 .lmstudio 下。哪个存在加哪个，都不存在就什么都不做。
+if [[ -d "$HOME/.cache/lm-studio/bin" ]]; then
+  export PATH="$PATH:$HOME/.cache/lm-studio/bin"
+fi
+if [[ -d "$HOME/.lmstudio/bin" ]]; then
+  export PATH="$PATH:$HOME/.lmstudio/bin"
+fi
+
+# 交互式 shell 且存在 zsh，就切到 zsh 登录 shell
 if [[ -t 1 && "$SHELL" != *"zsh" ]] && command -v zsh >/dev/null 2>&1; then
   exec zsh -l
 fi

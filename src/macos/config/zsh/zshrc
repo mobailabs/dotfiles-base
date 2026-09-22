@@ -30,15 +30,13 @@ DISABLE_AUTO_UPDATE=false
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
 
 # ============================================
-# Homebrew prefix detection (macOS + Linuxbrew)
+# Homebrew prefix detection
 # ============================================
 if [[ -z "${HOMEBREW_PREFIX:-}" ]]; then
   if [[ -x "/opt/homebrew/bin/brew" ]]; then
     export HOMEBREW_PREFIX="/opt/homebrew"
   elif [[ -x "/usr/local/bin/brew" ]]; then
     export HOMEBREW_PREFIX="/usr/local"
-  elif [[ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]]; then
-    export HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
   fi
 fi
 

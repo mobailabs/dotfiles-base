@@ -1,4 +1,4 @@
-# Minimal required CLI packages (macOS + Linuxbrew / Ubuntu/Debian server)
+# Minimal required CLI packages
 zsh
 eza
 bat

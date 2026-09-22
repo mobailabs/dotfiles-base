@@ -1,9 +1,12 @@
 # dotfiles-base
 
-新机器的起点。macOS + Ubuntu/Debian（Linuxbrew）/ Zsh / tmux / Neovim / mise。
+新机器的起点。macOS / Zsh / tmux / Neovim / mise。
 
 一次 `zsh install.zsh` 之后，这台机器就按同一套标准被配置好：软件装齐、配置链接到位、
 系统偏好应用、开发环境版本对齐。
+
+> **只做 macOS。** 以前还支持 Ubuntu/Debian 服务器（Linuxbrew + apt 引导），
+> 那条路已经删了 —— 见下面「为什么删掉 Linux」。
 
 ---
 
@@ -13,34 +16,33 @@
 配置改在这里，机器上的改动才有归宿。
 
 **不是**：某台机器的快照。机器专属的东西（Git 身份、SSH Host、token、公司内网变量）
-不进这个仓库 —— 它们属于私有仓库，通过 `private-template/` 起。
+不进这个仓库 —— 它们属于**私有仓库**（单独一个 git 仓库，不在本仓库内），
+通过三个 `.local` 落点被这里的加载点读进来。
 
 ---
 
-## 新机器：三步
+## 新机器：两步
 
 ```sh
 # 1. 克隆（路径随意，脚本按自身位置定位，不依赖固定目录）
-git clone <this-repo> ~/dotfiles-base
-cd ~/dotfiles-base
+git clone <this-repo> ~/dotfiles
+cd ~/dotfiles
 
 # 2. 装
 zsh install.zsh              # 全部：check → brew → 插件 → 链接 → mise → 系统偏好
-
-# 3. 起私有仓库（放身份信息 / SSH / token）
-cp -R private-template ~/private-dotfiles
-cd ~/private-dotfiles && git init && zsh install.zsh
 ```
+
+机器专属的东西（Git 身份 / SSH / token）另外放在一个私有仓库里，通过三个
+`.local` 落点被加载（见下面「加载点」）。**没有这个私有仓库也不会报错** ——
+加载点全是条件加载，缺了就静默跳过。所以「私有仓库在不在」是 macview 要提醒你的事。
 
 `install.zsh` 还可以单独跑某一步：
 
 | 命令 | 作用 |
 |---|---|
 | `zsh install.zsh` | 全套（`base`） |
-| `zsh install.zsh link` | 只重新链接配置（读 `link.map`） |
+| `zsh install.zsh link` | 只重新链接配置 |
 | `zsh install.zsh prefs` | 只重新应用 macOS 偏好（幂等，可随时重跑） |
-
-> Linux 服务器用 `sh install.sh` 走 apt 引导，再进 `install.zsh`。
 
 ---
 
@@ -48,19 +50,15 @@ cd ~/private-dotfiles && git init && zsh install.zsh
 
 ```text
 .
-├── link.map                 ← 落点的唯一声明（改这里，不要改脚本）
-├── install.zsh              ← macOS 入口
-├── install.sh               ← Linux 引导
+├── install.zsh              ← 入口（macOS）
 ├── packages/                ← 要装什么
 │   ├── common/brew-cli.txt
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
-│   ├── common/              ← 跨平台：check / brew / 插件 / 链接 / mise
-│   └── macos/prefs.d/       ← 系统偏好，一个文件一个主题
+│   ├── common/              ← brew / 插件 / 链接 / mise
+│   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
 ├── src/
-│   ├── common/config/       ← 所有平台共用的配置源
-│   └── {macos,linux}/config/← 平台覆盖（同名文件优先于 common）
-└── private-template/        ← 起私有仓库用的脚手架
+│   ├── macos/config/        ← 配置源（只有 macOS，没有平台分层）
 ```
 
 `src/` 里的东西**不直接生效** —— 它们是源，被链接到 `$HOME` 才生效。
@@ -74,10 +72,10 @@ cd ~/private-dotfiles && git init && zsh install.zsh
 
 | 你写的文件 | 靠什么被加载 | 在哪 |
 |---|---|---|
-| `~/.gitconfig.local` | `[include] path = ~/.gitconfig.local` | `src/common/config/git/gitconfig` |
-| `~/.zshrc.local` | `[[ -f ~/.zshrc.local ]] && source` | `src/common/config/zsh/zshrc` |
-| `~/.envconfig.local` | `if [[ -f ~/.envconfig.local ]]; then source` | `src/common/config/env/envconfig` |
-| `~/.ssh/config.local` | `Include ~/.ssh/config.local` | `private-template/src/common/config/ssh/config` |
+| `~/.gitconfig.local` | `[include] path = ~/.gitconfig.local` | `src/macos/config/git/gitconfig` |
+| `~/.zshrc.local` | `[[ -f ~/.zshrc.local ]] && source` | `src/macos/config/zsh/zshrc` |
+| `~/.envconfig.local` | `if [[ -f ~/.envconfig.local ]]; then source` | `src/macos/config/env/envconfig` |
+| `~/.ssh/config.local` | `Include ~/.ssh/config.local` | `~/.ssh/config`（本机私密文件，不在仓库里） |
 
 **加一个新的 `.local` 落点时，必须同时在标准文件里加加载点。** 只加一半等于没加。
 
@@ -89,30 +87,38 @@ cd ~/private-dotfiles && git init && zsh install.zsh
 
 | 想改什么 | 改哪 |
 |---|---|
-| 加一个要链接的配置文件 | `link.map` 加一行 + 在 `src/**/config/` 放源 |
+| 加一个要链接的配置文件 | `scripts/common/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/**/config/` 放源 |
 | 加一个要装的软件 | `packages/{common,macos}/brew-*.txt` |
-| 改 shell 别名 | `src/common/config/aliases` |
+| 改 shell 别名 | `src/macos/config/aliases` |
 | 改系统偏好 | `scripts/macos/prefs.d/*.zsh` |
-| 改工具版本 | `src/common/config/mise/config.toml` |
+| 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个机器专属的东西 | 私有仓库，**不是这里** |
 
 判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有仓库。**
 
 ---
 
-## link.map：落点的唯一声明
+## 落点声明：写在哪
 
-```text
-# <仓库内相对路径>  <$HOME 内相对路径>  [平台]
-zsh/zshrc         .zshrc
-ghostty           .config/ghostty     macos
+落点声明**就在 `scripts/common/link-dotfiles.zsh` 里**（`DOTFILE_LINKS` 数组），
+没有单独的 `link.map` 文件。每行两个字段，用 `|` 分隔：
+
+```zsh
+DOTFILE_LINKS=(
+  'zsh/zshrc|.zshrc'
+  'ghostty|.config/ghostty'
+)
 ```
 
-- 平台列留空 = 所有平台；写 `macos` / `linux` 则只在那个平台链接
-- 源按 `src/{平台}/config/` → `src/common/config/` 查找（平台覆盖通用）
-- 安装脚本读它，macview 也读它
+- 左边是 `src/macos/config/` 下的相对路径，右边是 `$HOME` 下的相对路径
+- 没有平台回退 —— 这个仓库只有 macOS，源都在 `src/macos/config/` 下，直接写全路径
 
-**改落点只改这里。** 以前这份映射在安装脚本里硬编码过一份，结果和检查脚本对不上。
+**加一条落点只改这里**，然后确认 `src/macos/config/` 下真的有对应的源。
+
+> 以前这份声明在一个单独的 `link.map` 文件里，理由是「声明只写一处、脚本不硬编码」。
+> 已经收回脚本，因为：这个仓库只有一个使用者，「别处也能读这份声明」的好处从没兑现过；
+> 读它还要复刻一整套 zsh 的 `read` 解析规则。macview 自己维护一份落点清单，两边会漂移 ——
+> 但那个漂移**是可检测的**（仓库里有源、`$HOME` 里没链接，对账时会报），不是静默的。
 
 替换已有文件时**不再直接删除**，而是移到 `~/.dotfiles-backup/<时间戳>/`，
 路径会打印出来。想改备份位置就设 `DOTFILES_BACKUP_DIR`。
@@ -122,12 +128,25 @@ ghostty           .config/ghostty     macos
 ## 和 macview 的关系
 
 [macview](https://github.com/zhaopengme/macview) 是这套标准的图形界面：
-**看见差异 → 一键对齐 → 可撤回**。
+**看见差异 → 一键对齐**。
 
-它读的就是这个仓库 —— `link.map`、`packages/*.txt`、`scripts/macos/prefs.d/*.zsh`
-都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
+它读的就是这个仓库 —— `scripts/common/link-dotfiles.zsh` 的落点、`packages/*.txt`、
+`scripts/macos/prefs.d/*.zsh` 都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
 
 两者不冲突：`install.zsh` 是命令行版本，macview 是图形版本，改的是同一批文件。
+
+---
+
+## 为什么删掉 Linux
+
+以前这个仓库同时管 macOS 和 Ubuntu/Debian 服务器（`install.sh` 走 apt 引导，
+`scripts/linux/`、`packages/linux/`、`src/linux/` 各有一份对应物）。
+
+删掉的理由：**这个仓库只有一个使用者，而他只在这台 macOS 上用。** Linux 那条路没有真实
+需求支撑，却要在每个脚本里留一份分支、在每个配置文件里留一份平台判断。留着只会让
+「标准」有两个版本，而且是其中一个从没被验证过的版本。
+
+现在 `uname -s` 不是 Darwin，安装脚本会直接报错退出 —— 不会静默走到一半。
 
 ---
 
@@ -140,5 +159,4 @@ ghostty           .config/ghostty     macos
 Include ~/.ssh/config.local
 ```
 
-放在文件最上面。模板 `private-template/src/common/config/ssh/config` 里已经有这行了，
-但已经装好的机器要自己补。
+放在文件最上面。`Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这行永远安全。
