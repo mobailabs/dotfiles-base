@@ -90,6 +90,8 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 | 你写的文件 | 靠什么被加载 | 在哪 |
 |---|---|---|
 | `~/.gitconfig.local` | `[include] path = ~/.gitconfig.local` | `src/macos/config/git/gitconfig` |
+| `~/.gitignore`（全局忽略） | `[core] excludesfile = ~/.gitignore` | `src/macos/config/git/gitconfig` |
+| `~/.gitattributes`（全局属性） | `[core] attributesfile = ~/.gitattributes` | `src/macos/config/git/gitconfig` |
 | `~/.zshrc.local` | `[[ -f ~/.zshrc.local ]] && source` | `src/macos/config/zsh/zshrc` |
 | `~/.envconfig.local` | `if [[ -f ~/.envconfig.local ]]; then source` | `src/macos/config/env/envconfig` |
 | `~/.ssh/config.local` | `Include ~/.ssh/config.local` | `~/.ssh/config`（本机私密文件，不在仓库里） |

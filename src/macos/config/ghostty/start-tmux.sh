@@ -5,10 +5,10 @@
 #
 # ## 为什么这里也自己找 brew / tmux
 #
-# 这是 README 说的「Homebrew 探测只写一处」的第二个例外：
+# 这是**不经过 brew-env.zsh** 的第二个地方：
 # 它由 Ghostty 经由 launchd 启动，环境是 launchd 给的最小 PATH，
 # 既没有 source .zshenv，也没有 .zprofile —— 只能自己找。
-# 另一处例外是 scripts/macos/brew-bootstrap.zsh（安装期）。
+# （另一个不经过的是 scripts/macos/brew-bootstrap.zsh，安装期鸡生蛋。）
 
 # 确保 GUI 启动时也能获取 Homebrew 环境（含 /opt/homebrew/bin）
 if [[ -x "/opt/homebrew/bin/brew" ]]; then

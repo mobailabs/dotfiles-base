@@ -131,11 +131,13 @@ brew install tmux        # 已在 packages/common/brew-cli.txt
 
 ### 插件管理（TPM）
 
-| 快捷键 | 功能 |
+> ⚠️ 本配置把 `prefix I` 绑给了「同步输入到所有面板」，**覆盖了 TPM 默认的安装键**。
+> 所以装插件不能用 `prefix I`；用命令行或 TPM 的脚本。
+
+| 方式 | 功能 |
 |---|---|
-| `prefix I` | 安装插件 |
-| `prefix U` | 更新插件 |
-| `prefix Alt+U` | 卸载不在配置里的插件 |
+| `~/.tmux/plugins/tpm/bin/install_plugins` | 安装配置里声明的插件 |
+| `~/.tmux/plugins/tpm/bin/update_plugins all` | 更新插件 |
 | `prefix Ctrl+S` / `Ctrl+R` | 手动保存 / 恢复会话（resurrect） |
 
 ---
@@ -216,7 +218,7 @@ tmux -f ~/.tmux.conf start-server
 
 # 插件没加载
 ls ~/.tmux/plugins/tpm        # 应存在；没有就 zsh install.zsh
-# 进 tmux 后 prefix + I
+# 然后跑 ~/.tmux/plugins/tpm/bin/install_plugins（prefix I 被同步面板占用，见上）
 
 # 状态栏脚本不显示
 ls -l ~/.config/tmux/bin/     # 应该是可执行文件

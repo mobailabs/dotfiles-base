@@ -57,14 +57,20 @@ unset _pre
 export PATH
 
 # ============================================
-# Homebrew 环境（唯一一处探测，其它文件不要再重复）
+# Homebrew 环境（交互 shell 的探测，其它文件不要再重复）
 # ============================================
 # 放在 .zshenv：所有 shell（login/non-login、interactive/non-interactive）
 # 都会加载它，所以在 zprofile / zshrc 里就不用再各探一次了。
 #
+# 这里只设路径（不执行 brew 命令，免得拖慢启动）。
+# 需要**把 brew 环境拉进当前进程**的脚本用 scripts/common/brew-env.zsh，
+# 那是给非交互 / 子进程场景用的共享实现；两者判断同一批路径。
+#
 # 以前这套「先 /opt/homebrew 再 /usr/local」的判断在 4 个地方各写了一遍
 # （zprofile、zshrc、brew-bootstrap.zsh、ghostty/start-tmux.sh），
 # 加一台新路径的机器就要改 4 处、漏一处就静默失效。
+# 现在收敛成：本文件（交互 shell）+ brew-env.zsh（脚本）+ 两个必须例外的
+# （brew-bootstrap 安装期、start-tmux GUI 上下文）。
 #
 # 做的事和 `brew shellenv` 一样：设 HOMEBREW_* 并把 bin 加到 PATH。
 # 不直接 eval `brew shellenv` 是因为它在非交互 shell 里会拖慢启动，

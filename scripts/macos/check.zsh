@@ -20,6 +20,15 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${0:A}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# 预检本身跑在非交互 shell 里，PATH 是 launchd 最小值，可能看不到 homebrew。
+# 用共享的 brew-env 探测并把环境补进当前进程（同一套探测，不各写一份）。
+# 找不到 brew 时它返回非零，下面的软依赖检查会据此给出提示。
+brew_ready=0
+source "$ROOT_DIR/scripts/common/brew-env.zsh" && brew_ready=1
+
 fatal=()
 warn=()
 
@@ -48,21 +57,15 @@ fi
 
 # ---- 软依赖（会被自动补） ----
 #
-# ⚠️ 不能在非交互 shell 里只信 `command -v brew`：
-# install.zsh 是非交互执行的，PATH 是 launchd 给的最小值，
-# 即使 brew 已装在 /opt/homebrew/bin，这里也**找不到** ——
-# 会给出「没有 Homebrew」的假警告（然后 brew-install 又发现它其实在）。
-# 所以按实际安装路径判断。
-has_brew() {
-  command -v brew >/dev/null 2>&1 && return 0
-  [[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]]
-}
-
-if ! has_brew; then
+# brew / mise 缺失是**正常的**：brew 由 brew-bootstrap 自动装，
+# mise 由 brew 装（在 packages/common/brew-cli.txt 里）。
+# 所以这里只提示会怎么补，不报错。
+# 探测已经由上面的 brew-env 做过了（brew_ready）。
+if (( brew_ready == 0 )); then
   warn+=("没有 Homebrew —— brew-install 会先自动安装它")
 fi
 
-# mise 同理：brew 装的 mise 在非交互 PATH 里也可能看不到。
+# mise 同理：brew-install 之后 brew-env 会把 PATH 补好，正常能命中。
 if ! command -v mise >/dev/null 2>&1 && [[ ! -x "$HOME/.local/bin/mise" ]]; then
   warn+=("没有 mise —— 它会在 brew 阶段被装上，之后才跑 mise install")
 fi

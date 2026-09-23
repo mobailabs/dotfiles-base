@@ -1,0 +1,32 @@
+# ============================================
+# 全局 git 忽略（core.excludesfile）
+# ============================================
+# 由 src/macos/config/git/gitconfig 的 `excludesfile = ~/.gitignore` 引用。
+# 链接到 ~/.gitignore（见 scripts/common/link-dotfiles.zsh 的 DOTFILE_LINKS）。
+#
+# 只放**所有仓库通用**的忽略项；某个仓库专属的写那个仓库自己的 .gitignore。
+
+# macOS 元数据
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# 编辑器 / IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml
+
+# 常见构建产物 / 依赖目录
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+target/

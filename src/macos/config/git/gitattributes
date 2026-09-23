@@ -1,0 +1,23 @@
+# ============================================
+# 全局 git attributes（core.attributesfile）
+# ============================================
+# 由 src/macos/config/git/gitconfig 的 `attributesfile = ~/.gitattributes` 引用。
+# 链接到 ~/.gitattributes（见 scripts/common/link-dotfiles.zsh 的 DOTFILE_LINKS）。
+#
+# 只放**所有仓库通用**的属性；某个仓库专属的写那个仓库自己的 .gitattributes。
+
+# 默认把所有文本文件当文本处理，检出时统一用 LF，
+# 避免跨平台协作时 CRLF/LF 来回抖动（配合 gitconfig 的 core.autocrlf = input）。
+* text=auto eol=lf
+
+# 明确标记为二进制的类型，git 不要尝试 diff / 转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.icns binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary

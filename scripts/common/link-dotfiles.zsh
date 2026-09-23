@@ -45,6 +45,8 @@ DOTFILE_LINKS=(
   'tmux/config|.config/tmux'
   'nvim|.config/nvim'
   'git/gitconfig|.gitconfig'
+  'git/gitignore|.gitignore'
+  'git/gitattributes|.gitattributes'
   'mise/config.toml|.config/mise/config.toml'
   'env/envconfig|.envconfig'
   'shell/bash_profile|.bash_profile'
