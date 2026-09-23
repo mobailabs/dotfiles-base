@@ -3,7 +3,8 @@
 
 # Daily use extras
 gh
-xcodes
+# xcodes CLI 属于 tap XcodesOrg/made，不在官方 core —— 必须写全路径。
+XcodesOrg/made/xcodes
 
 # Zsh enhancements
 # ⚠️ 两对竞品，每个都只能留一个（同时装两个会互相打架，且没被 source 的那个
