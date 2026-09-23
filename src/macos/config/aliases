@@ -47,12 +47,12 @@ alias -- -='cd -'
 
 # --- Docker ---
 alias d='docker'
-alias dc='docker-compose'
+# 用 v2 的 `docker compose` 子命令形式 —— 独立的 docker-compose (v1) 已 EOL。
+alias dc='docker compose'
 
 # --- Mise ---
 alias m='mise'
 
-
-#
+# --- Misc ---
 alias v="nvim"
 alias hp='python3 -m http.server 9010'
