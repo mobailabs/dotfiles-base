@@ -21,6 +21,17 @@ src/macos/config/
     └── bash_profile         → ~/.bash_profile（bash 兼容 + 切 zsh）
 ```
 
+另外还有一个**间接**参与 shell 的文件（不在上面的树里，因为它属于 tmux 配置）：
+
+```
+src/macos/config/tmux/config/aliases.sh  →  ~/.config/tmux/aliases.sh
+```
+
+它由 `~/.zshrc` 末尾 source，内容是 tmux 相关的短命令与函数
+（`t`/`ta`/`tn`/`tk` 这类别名，以及 `tcd`、`tal` 等智能会话函数）。
+之所以单独放，是因为它和 `tmux.conf` 同属一套 tmux 配置，跟着 tmux 目录一起被链接。
+注意它是 `#!/bin/bash` —— 内容只用 POSIX 兼容语法，zsh 里 source 也没问题。
+
 想改 shell 行为，改这里的源文件。**不要**直接改 `~/.zshrc` 之类的 —— 那是软链接。
 
 ---
@@ -46,7 +57,8 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
             ├─ ~/.funcs     → 自定义函数
             ├─ ~/.envconfig → 环境配置
             ├─ ~/.config/dotfiles/os.zsh
-            └─ ~/.zshrc.local → 本机私有（不存在就跳过）
+            ├─ ~/.zshrc.local → 本机私有（不存在就跳过）
+            └─ ~/.config/tmux/aliases.sh → tmux 相关别名
 ```
 
 ### 三条硬规矩
@@ -60,12 +72,17 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
    反过来，**文件里也不要写 `return` 去“提前结束”** —— 当它被 `source`
    而不是当顶层 zshrc 执行时，`return` 会终止**调用者**的加载，后面全丢且静默。
 
-3. **Homebrew 探测只有一份（`.zshenv`）。**
-   别的文件别再写 `/opt/homebrew` / `/usr/local` 判断。加一台不同路径的机器
-   本来要改 4 处、漏一处就静默失效 —— 现在收敛到：
+3. **Homebrew 环境探测只有一份（`.zshenv`）。**
+   别的文件别再写 `/opt/homebrew` / `/usr/local` 判断来决定 `HOMEBREW_PREFIX` 或 PATH。
+   加一台不同路径的机器本来要改 4 处、漏一处就静默失效 —— 现在收敛到：
    - 交互 shell → `.zshenv`
    - 非交互脚本 / 子进程 → `scripts/common/brew-env.zsh`
    - 唯一例外 → `scripts/macos/brew-bootstrap.zsh`（要**装** brew，鸡生蛋）
+
+   > 有两个**看起来像例外、实际不是**的地方，别误改：
+   > - `tmux.conf` 里的 `default-shell` 判断：它不决定 PATH，只是按优先级挑一个
+   >   存在的 `zsh`（brew 的优先，找不到退回系统 zsh）。找不到也不会静默失效。
+   > - `gitconfig` 的注释：只是说明「不写死 gpg 路径，靠 PATH 找」，没有判断逻辑。
 
 ---
 
@@ -78,6 +95,7 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
 | `MANPAGER` | `less -X` | `zshenv` |
 | `TERM` | **不设**（只在为空时兜底 `xterm-256color`） | `env/envconfig` |
 | `HOMEBREW_*` | 按探测结果 | `zshenv` |
+| `MANPATH` / `INFOPATH` | 把 brew 的 man / info 页加进去 | `zshenv`（仅在探测到 brew 时） |
 
 **`TERM` 为什么不写死**：终端自己会设（Ghostty 设 `xterm-ghostty`，iTerm 设
 `xterm-256color`）。写死会盖掉终端的专有 terminfo，导致 tmux 的
@@ -91,17 +109,27 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 
 ## PATH 的组装
 
-在 `.zshenv` 里，顺序是刻意排的：
+在 `.zshenv`（组装主体）和 `.zshrc`（末尾补充）里，顺序是刻意排的：
 
 ```
 最前面（_pre，越靠前优先级越高）
   ~/.bin  ·  ~/.local/bin          ← 自己装的 CLI 要先于系统的
+紧接着（brew 装好后）
+  $HOMEBREW_PREFIX/bin  ·  sbin    ← 用 path=(...) 前置（不是 append）
 中间
-  $HOMEBREW_PREFIX/bin  ·  sbin  ·  系统默认
-末尾
-  ~/go/bin  ~/.go/bin  ~/.cargo/bin  ~/.config/tmux/bin  ~/.bun/bin
+  系统默认（/usr/bin 等）
+末尾（append）
+  ~/go/bin  ~/.go/bin  ~/.cargo/bin  ~/.config/tmux/bin  ~/.bun/bin   ← zshenv
+  ~/.npm-global/bin  ~/.lmstudio/bin                                  ← zshrc
 ```
 
+- **brew 的 bin 是前置的**，不是「中间」——`.zshenv` 里写的是
+  `path=("$HOMEBREW_PREFIX/bin" $path)`。因为它在 `_pre` 之后执行，
+  最终优先级是：`_pre` 的两项 > brew > 系统默认 > 末尾追加项。
+  这样 `brew install` 的东西会盖过系统自带的同名命令（预期行为）。
+- **末尾追加项分两处**：语言工具链（go/cargo/bun）和 tmux 工具在 `.zshenv`；
+  `.npm-global/bin`、`.lmstudio/bin` 在 `.zshrc`（因为 npm 和 LM Studio 属于
+  交互使用，非交互 shell 用不到）。
 - **每个目录都带存在性判断**。不存在的目录进 PATH 不报错，但会让你以为那里有东西
   （历史上就踩过：`$HOME/.dotfiles/bin` 指向一个从不存在的目录）。
 - 用 `typeset -U path` 去重。
@@ -125,7 +153,18 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 | Python（在 `envconfig`） | `pyv` `pya` `pyd` `pyi` |
 
 `ls`/`cat` 这类用了条件判断：只有在 `eza` / `bat` 存在时才覆盖，否则保留原命令
-（`ll` 会退回 `ls -lah`）。所以 **brew 还没装时不会一进来就 `command not found`**。
+（`ls`/`cat` 变成**没有别名**，也就是直接用系统命令 —— 效果上等于「保留原命令」）。
+注意三种情况并不一样：
+
+| 命令 | eza/bat 存在 | 不存在 |
+|---|---|---|
+| `ls` | `eza` | 无别名 → 系统 `ls` |
+| `cat` | `bat` | 无别名 → 系统 `cat` |
+| `ll` | `eza -l --icons --git -a` | `ls -lah`（有兜底） |
+| `lt` | `eza --tree --level=2` | **没有这个别名**（敲 `lt` 会 `command not found`） |
+
+所以 **brew 还没装时不会一进来就 `command not found`** —— 除了 `lt`，
+它只在装了 `eza` 之后才存在。
 
 ---
 
@@ -135,6 +174,25 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 复杂逻辑时写这里，而不是别名。
 
 分工：`aliases` = 一行命令的别名；`funcs` = 真函数。
+
+> 注意：「函数都写在 `.funcs`」是**约定**，不是现状 —— 仓库里目前真正定义函数的
+> 只有 `tmux/config/aliases.sh`（`tcd`、`tal` 等会话函数），因为它们和 tmux
+> 配置强耦合。`~/.config/dotfiles/os.zsh` 同样是**刻意的空骨架**（只加载、
+> 没内容），用途见下。
+
+---
+
+## macOS 专属的扩展点（两个空文件）
+
+`~/.config/dotfiles/os.zsh` 和 `~/.config/dotfiles/ohmyzsh.plugins.zsh` 内容都很少，
+但**不是没写完** —— 它们是刻意留出来的「只在这台 Mac 上生效」的隔离区：
+
+| 文件 | 作用 | 为什么单独放 |
+|---|---|---|
+| `os.zsh` | 放 macOS 专属的 shell 片段 | 不污染 `~/.zshrc`；需要「只在 Mac 上做某件事」时写这里 |
+| `ohmyzsh.plugins.zsh` | 追加 macOS 专属的 OmZ 插件（当前加 `macos`） | 插件列表主体在 `oh-my-zsh.sh`，平台差异外置 |
+
+两者都由 `~/.zshrc` / `~/.oh-my-zsh.sh` 条件 source。
 
 ---
 
@@ -172,12 +230,13 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 | `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 | 你自己 / 私有仓库 |
 | `~/.envconfig.local` | 私有环境变量 | `env/envconfig` | 你自己 / 私有仓库 |
 
-`~/.gitconfig.local` 在 `install.zsh` 跑的时候会被自动写好（见 `shell.md`
-顶部「一条命令」）。给 `install.zsh` 传 `--name/--email` 就完全不问。
+`~/.gitconfig.local` 在 `install.zsh` 跑的时候会被自动写好。给
+`install.zsh` 传 `--name/--email`（或 `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`
+环境变量）就完全不问。细节见 `README.md` 的「新机器：一条命令」一节。
 
 **加私有文件时，必须同时在标准文件里加加载点。** 只加一半等于没加 ——
 文件会被创建、但没人读，而且不报错。这是这个仓库最容易踩的坑，
-完整的加载点清单见根 `README.md` 的「加载点」一节。
+完整的加载点清单见根 `README.md` 的「加载点：什么靠什么生效」一节。
 
 ---
 
