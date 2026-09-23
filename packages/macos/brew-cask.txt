@@ -25,9 +25,9 @@ font-maple-mono-nf-cn
 
 # Development Tools
 gpg-suite
-# xcodes-app 不在官方 caskroom，属于 tap XcodesOrg/made —— 必须写全路径，
-# 否则 `brew install --cask xcodes-app` 找不到（brew 会顺带自动 tap）。
-XcodesOrg/made/xcodes-app
+# xcodes-app（GUI）**在官方 homebrew/cask 里**，写短名即可。
+# 不要加 tap 前缀 —— XcodesOrg/made 只有 Formula/xcodes.rb（CLI），没有 cask。
+xcodes-app
 httpie-desktop
 antigravity
 
