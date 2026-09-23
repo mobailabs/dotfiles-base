@@ -94,10 +94,31 @@ start_sudo_keepalive() {
   rm -f "$_SUDO_KEEPALIVE_SLEEPFILE" 2>/dev/null || true
 
   (
+    # 失败几次才真正放弃 —— 不要一次 `sudo -n` 失败就静默退出。
+    #
+    # 为什么：`sudo -n true` 失败的唯一原因就是缓存过期。若此刻直接 exit，
+    # keep-alive 就没了，之后每个需要 sudo 的步骤都会重新弹密码（或失败）。
+    # 用短退避重试几次，缓存回来了就继续 —— 大幅降低「跑一半又开始问密码」。
+    fails=0
     while true; do
-      sudo -n true 2>/dev/null || exit 0
-      # 把 sleep 换成可被外部杀掉的写法：后台 sleep + 等它。
-      # 这样 stop 时能通过文件里的 PID 精确杀掉这个 sleep。
+      if sudo -n true 2>/dev/null; then
+        fails=0
+      else
+        fails=$((fails + 1))
+        if (( fails == 3 )); then
+          echo "  ! sudo 预授权已过期，且刷新失败；需要 sudo 的步骤可能失败。" >&2
+        fi
+        # 连续 10 次刷不回来（约 5 分钟）就放弃 —— 免得永远空转。
+        if (( fails >= 10 )); then
+          echo "  ! 停止刷新 sudo（连续失败 10 次）。" >&2
+          exit 0
+        fi
+        # 退避：15s → 30s → 30s …（比 60s 更勤，缓回来了才睡得长）
+        sleep 15 &
+        echo $! > "$_SUDO_KEEPALIVE_SLEEPFILE"
+        wait $! 2>/dev/null || exit 0
+        continue
+      fi
       sleep 60 &
       echo $! > "$_SUDO_KEEPALIVE_SLEEPFILE"
       wait $! 2>/dev/null || exit 0
