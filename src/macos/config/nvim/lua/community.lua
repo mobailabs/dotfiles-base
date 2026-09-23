@@ -7,9 +7,6 @@ return {
 
 	-- Copilot & 其它补全
 	{ import = "astrocommunity.completion.copilot-lua-cmp" },
-	-- { import = "astrocommunity.completion.avante-nvim" },
-
-	-- { import = "astrocommunity.completion.avante-nvim" },
 
 	-- AI
 	{ import = "astrocommunity.ai.opencode-nvim" },

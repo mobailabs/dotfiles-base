@@ -64,6 +64,10 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 │   │   └── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
 │   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
+│   ├── zsh/  env/  shell/   ← .zshenv/.zshrc/别名/函数/导出变量
+│   ├── git/                 ← gitconfig + 全局 gitignore/gitattributes
+│   ├── tmux/  ghostty/      ← 终端与复用器
+│   └── nvim/  mise/         ← 编辑器与工具版本
 ```
 
 `src/` 里的东西**不直接生效** —— 它们是源，被链接到 `$HOME` 才生效。

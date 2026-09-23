@@ -1,6 +1,11 @@
 # tmux 配置
 
-一份单文件、Vim 风格的 tmux 配置，配色与 Ghostty 对齐。
+一份单文件、Vim 风格的 tmux 配置。
+
+> **配色说明**：tmux 状态栏用的是 **Monokai Pro Ristretto** 暖色深色板
+> （主色 `#FC9867` 橙）。Ghostty 终端用的是另一套 **Neo-Geometric Dark** 冷青色板
+> （主色 `#32ade6` 青）—— 两者**不是同一套**，只是都偏深色，视觉上不打架。
+> 想统一改哪套就改哪套：终端底色在 `ghostty/config`，tmux 状态栏在本文件。
 
 > 这份文档是 tmux 配置的**唯一**说明。以前这里还有 `ALIASES.md`、
 > `KEYBINDINGS.md`、`QUICKREF.md`、`MIGRATION.md` 四份（共 1100+ 行），
@@ -55,7 +60,8 @@ brew install tmux        # 已在 packages/common/brew-cli.txt
 | tmux-continuum | 每 15 分钟自动保存 + 启动自动恢复 |
 | tmux-yank | 增强复制 |
 
-安装：`zsh install.zsh`（会自动装 TPM 与插件），或进 tmux 后按 `prefix + I`。
+安装：`zsh install.zsh`（会自动装 TPM 与插件）。
+注意 `prefix I` 被绑给了「同步面板」，不是 TPM 的安装键 —— 见下面「插件管理」。
 
 ---
 

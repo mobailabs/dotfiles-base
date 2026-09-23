@@ -6,12 +6,15 @@ gh
 xcodes
 
 # Zsh enhancements
+# ⚠️ 两对竞品，每个都只能留一个（同时装两个会互相打架，且没被 source 的那个
+#    属于「装了却永不生效」）：
+#   zsh-autosuggestions           vs zsh-autocomplete      → 留 autosuggestions
+#   zsh-syntax-highlighting       vs zsh-fast-syntax-highlighting → 留前者
+# 被选中的在 src/macos/config/zsh/zshrc 里有对应 source 行；另一个不装。
 zsh-autosuggestions
 zsh-completions
 zsh-syntax-highlighting
-zsh-fast-syntax-highlighting
 zsh-history-substring-search
-zsh-autocomplete
 
 # Dev tools
 fd

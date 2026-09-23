@@ -24,16 +24,11 @@ return {
         },
         -- passed to `vim.filetype.add`
         filetypes = {
-            -- see `:h vim.filetype.add` for usage
-            extension = {
-                foo = "fooscript",
-            },
-            filename = {
-                [".foorc"] = "fooscript",
-            },
-            pattern = {
-                [".*/etc/foo/.*"] = "fooscript",
-            },
+            -- 按需添加自定义 filetype 映射；原来是模板的 foo/fooscript 占位示例，已删。
+            -- 用法见 `:h vim.filetype.add`
+            extension = {},
+            filename = {},
+            pattern = {},
         },
         -- vim options can be configured here
         options = {

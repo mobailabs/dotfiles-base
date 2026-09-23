@@ -1,5 +1,15 @@
 #!/usr/bin/env zsh
 # ============================================
+# Homebrew 环境（要先于 oh-my-zsh，因为 fpath 要在 compinit 之前就位）
+# ============================================
+# .zshenv 已经设好 HOMEBREW_PREFIX（所有 shell 都加载，且先于本文件）。
+# zsh-completions 提供 brew 装的额外补全定义；它必须在 oh-my-zsh 的
+# compinit 运行**之前**把目录加进 fpath，否则不会生效。
+if [[ -n "${HOMEBREW_PREFIX:-}" && -d "$HOMEBREW_PREFIX/share/zsh-completions" ]]; then
+  fpath=("$HOMEBREW_PREFIX/share/zsh-completions" $fpath)
+fi
+
+# ============================================
 # Oh My Zsh 加载
 # ============================================
 # 性能优化：跳过一些检查以加快启动速度
@@ -81,21 +91,14 @@ fi
 # ============================================
 # Zsh 插件加载（通过 Homebrew 安装）
 # ============================================
-# 注意：zsh-autocomplete 和 zsh-autosuggestions 功能重叠
-# 推荐只启用其中一个以避免冲突
-#
-# 选项 1：使用 zsh-autocomplete（实时自动补全，更智能但可能较慢）
-# 选项 2：使用 zsh-autosuggestions（基于历史建议，更快但功能简单）
-#
-# 当前启用：zsh-autosuggestions（推荐，性能更好）
+# 这里 source 的插件都在 packages/macos/brew-cli.txt 里声明。
+# 两对竞品各只启用一个（另一个不在清单里，装都不会装）：
+#   zsh-autosuggestions        ← 启用（基于历史建议，快）
+#     vs zsh-autocomplete      ← 不装（实时补全更强但更慢，与上面冲突）
+#   zsh-syntax-highlighting    ← 启用（且必须最后加载）
+#     vs zsh-fast-syntax-highlighting ← 不装（与上面冲突）
 
-# zsh-autocomplete（如果需要更强大的补全，取消注释并注释掉 zsh-autosuggestions）
-# 注意：zsh-autocomplete 必须在其他补全插件之前加载
-# if [[ -f "$HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh" ]]; then
-#   source "$HOMEBREW_PREFIX/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh"
-# fi
-
-# zsh-autosuggestions（推荐，基于历史的快速建议）
+# zsh-autosuggestions（基于历史的快速建议）
 if [[ -f "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
   source "$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
   # 配置建议颜色（可选）

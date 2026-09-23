@@ -33,12 +33,11 @@ die() { echo "[brew] $*" >&2; exit 1; }
 
 DRY_RUN="${DRY_RUN:-0}"
 
-os_id() {
-  case "$(uname -s)" in
-    Darwin) echo "macos" ;;
-    *) die "Unsupported OS: $(uname -s)（这个仓库只做 macOS）" ;;
-  esac
-}
+# 这个仓库只做 macOS。不假装能跑别的平台 —— 和 check.zsh / brew-audit.zsh 一致。
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  die "Unsupported OS: $(uname -s)（这个仓库只做 macOS）"
+fi
+readonly OS_ID="macos"
 
 # 取路径最后一段：`user/tap/formula` → `formula`。
 # 与 macview 的 basename() 保持一致 —— 两边的「这个包叫什么」必须同一个答案。
@@ -112,8 +111,7 @@ main() {
     die "brew not found in PATH; run OS brew bootstrap first."
   fi
 
-  local os
-  os="$(os_id)"
+  local os="$OS_ID"
 
   local with_cask="${WITH_CASK:-0}"
 

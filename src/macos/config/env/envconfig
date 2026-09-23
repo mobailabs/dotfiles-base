@@ -5,7 +5,17 @@
 # export HTTP_PROXY=""
 # export HTTPS_PROXY=""
 
-export TERM=xterm-256color
+# ⚠️ 不要在这里写死 `export TERM=...`。
+#
+# 终端会自己设 TERM（Ghostty 设 `xterm-ghostty`，iTerm 设 `xterm-256color`…），
+# 写死会把终端的专有 terminfo 覆盖掉：
+#   - Ghostty 下丢掉 xterm-ghostty，tmux 的 `terminal-overrides ",ghostty:Tc"`
+#     就永远匹配不上（进 tmux 时外层 TERM 已经不是 ghostty 了）；
+#   - 反过来，在非 Ghostty 终端里也会被错标成 ghostty 的假设。
+# 只在 TERM **完全为空**（极端异常，比如某些 cron/daemon 上下文）时才兜底。
+if [[ -z "${TERM:-}" ]]; then
+  export TERM=xterm-256color
+fi
 
 # Local env overlay (private/machine-specific)
 # If you use the private template, it will link ~/.envconfig.local for you.
