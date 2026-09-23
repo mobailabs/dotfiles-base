@@ -27,7 +27,6 @@ ZSH_THEME="robbyrussell"
 # HYPHEN_INSENSITIVE="true"
 
 CASE_SENSITIVE="false"
-DISABLE_UPDATE_PROMPT=true
 
 # ============================================
 # 插件配置
@@ -49,7 +48,9 @@ plugins=(
   brew          # Homebrew 补全和别名
   colored-man-pages  # 彩色 man 页面
   command-not-found  # 命令未找到时提供安装建议
-  z             # z 命令快速跳转（如果不用 zoxide）
+  # z             # 目录跳转 —— 不用它：zshrc 里启用了 zoxide，
+  #               # 两个都注册 `z` 函数会互相覆盖（zoxide 后加载胜出），
+  #               # 且各自维护一份数据文件。统一用 zoxide。
 )
 
 # OS-specific plugin overlay (optional)

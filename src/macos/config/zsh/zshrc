@@ -183,16 +183,17 @@ if [[ -n "$TMUX" ]]; then
 fi
 
 # ============================================
-# 性能优化
+# 补全（compinit）
 # ============================================
-# 延迟加载重量级命令（如果需要）
-# 取消注释以启用延迟加载
-# autoload -Uz compinit
-# if [[ -n ${ZDOTDIR}/.zcompdump(#qN.mh+24) ]]; then
-#   compinit
-# else
-#   compinit -C
-# fi
+# 不要在这里手动跑 compinit —— Oh My Zsh 已经跑过了（在 source $ZSH/oh-my-zsh.sh 时）。
+# 再跑一次是重复工作，还可能和 OmZ 的补全缓存打架。
+#
+# 想让自定义补全目录生效：把目录**加进 fpath，且要在 oh-my-zsh 之前**。
+# 例子见本文件顶部 zsh-completions 的 fpath 那一段。
+#
+# （本文件以前留了一段注释掉的 `compinit` 延迟加载示例，用的是
+#   `${ZDOTDIR}/.zcompdump` —— 但 ZDOTDIR 这里从没设过，那段照抄会指错路径，
+#   而且是和 OmZ 重复的第二种补全初始化。已删。）
 
 # ============================================
 # 启动时间测试（调试用）
