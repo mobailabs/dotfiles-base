@@ -88,6 +88,8 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ```text
 .
 ├── install.zsh              ← 入口（macOS）
+├── README.md                ← 本文件：装什么、怎么装、改哪里
+├── shell.md                 ← shell 加载链的完整说明（PATH/环境变量/别名/函数）
 ├── packages/                ← 要装什么
 │   ├── common/brew-cli.txt
 │   └── macos/{brew-cli,brew-cask}.txt
@@ -140,6 +142,10 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 **加一个新的 `.local` 落点时，必须同时在标准文件里加加载点。** 只加一半等于没加。
 
 `Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
+
+> shell 这一侧的完整加载链（`.zshenv → .zprofile → .zshrc` 的顺序、
+> 每个文件里 PATH / 环境变量 / 别名 / 函数分别在哪、为什么这么分），
+> 见 **[`shell.md`](shell.md)**。README 只讲「谁读谁」，`shell.md` 讲「为什么」。
 
 ---
 
