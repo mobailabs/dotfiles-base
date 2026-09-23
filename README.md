@@ -46,8 +46,8 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 | `zsh install.zsh audit` | **对账**：清单里声明、这台没装的包（只读，不改机器） |
 | `zsh install.zsh help` | 用法 |
 
-`audit` 是 macview「看见差异」的命令行版：它和 macview 读同一批
-`packages/*.txt`、用同一套解析规则，所以两边给出的答案一致。
+`audit` 读 `packages/*.txt`，用和安装脚本同一套解析规则，报告
+「声明了但没装」「清单内重复」「本机多出来的」。只读，不改机器。
 
 ---
 
@@ -71,17 +71,13 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 
 ## 包清单的格式（**别改**）
 
-`packages/*/brew-*.txt` 的格式是**共享契约**，有两个读者：
-`scripts/common/brew-packages-install.zsh`（装）和 macview（对账）。
-规则（两边必须一致）：
+`packages/*/brew-*.txt` 的格式由 `scripts/common/brew-packages-install.zsh`
+（装）和 `scripts/common/brew-audit.zsh`（对账）共同解析。规则：
 
-- 一行一个包，`#` 之后是注释
-- 取每行**第一个空白分隔**的字段
+- 一行一个包，`#` 之后是注释，取每行**第一个空白分隔**的字段
 - 带 tap 的写全路径 `user/tap/formula`（brew 会顺带自动 tap）；
-  两边比对时都取 **basename**（`im-select`）去和 `brew list` 比
-
-**不要**引入 `tap:`、`mas:` 之类的前缀语法 —— macview 的解析器不认，
-会让两边静默漂移。
+  比对「装没装」时取 **basename**（`formula`）去和 `brew list` 比
+- 行首可以有空白，解析会先去掉再取字段
 
 ---
 

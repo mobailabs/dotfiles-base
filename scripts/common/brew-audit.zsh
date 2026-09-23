@@ -2,20 +2,21 @@
 #
 # 对账：packages/*.txt 里声明的包，这台机器实际装了没有。
 #
-# 存在的理由和 macview 一样 —— 「清单说该有、这台没有」是最常见的静默失效。
-# macview 是图形版（它自己读同样的文件），这里是命令行版。
+# 「清单说该有、这台没有」是最常见的静默失效 —— 这个脚本专门报它。
 #
 # ## 输出分三类
 #
 #   - 缺失：声明了、这台没装        → 该跑 install.zsh
-#   - 多出：这台有、清单里没有      → 要不要「采纳」进清单，你决定
-#   - 重复：清单内部或跨清单出现两次 → 清理，否则 macview 的计数会和逐清单相加对不上
+#   - 重复：清单内部或跨清单出现两次 → 清理，否则计数会和逐清单相加对不上
+#   - 多出：这台有、清单里没有      → 要不要加进清单，你决定
 #
-# ## 和 macview 的一致性
+# ## 解析规则
 #
-# 解析规则完全照抄 macview 的 parsePackageList：
-#   `#` 之后是注释 / 取第一个空白字段 / 取 basename 去比。
-# 两边任何一处改了规则，这里必须同步 —— 否则同一个仓库会给出两个答案。
+# 与 scripts/common/brew-packages-install.zsh 保持同一套：
+#   `#` 之后是注释 / 去掉前导空白后取第一个字段 / 取 basename 去比。
+# 两处任何一处改了规则，另一边必须同步 —— 否则装的和报的会对不上。
+#
+# 只覆盖公共仓库的 3 份清单（common/macos cli + macos cask）。
 #
 # 用法：
 #   zsh scripts/common/brew-audit.zsh
@@ -52,7 +53,7 @@ read_declared() {
   done <"$file"
 }
 
-# 去重后取最后一段（`daipeihust/tap/im-select` → `im-select`）。
+# 取最后一段（`user/tap/formula` → `formula`）。
 # 串到流水线里用；命名保留 basename 的说法，和 macview 的 basename() 对应。
 basename_of() { echo "${1##*/}"; }
 

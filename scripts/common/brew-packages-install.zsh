@@ -14,8 +14,8 @@
 #
 # ## 这次补的能力
 #
-#   1. 「已安装」检查用 basename：`brew list` 只认 `im-select`，
-#      不认 `daipeihust/tap/im-select`。以前直接拿整行去查，带 tap 的包
+#   1. 「已安装」检查用 basename：`brew list` 只认包名本身（`foo`），
+#      不认带 tap 的全路径（`user/tap/foo`）。以前直接拿整行去查，带 tap 的包
 #      每次都判为「没装」→ 每次都重装。现在查用 basename、装用全路径。
 #   2. 失败汇总：默认跳过失败项继续，结束后统一报告（见 EXIT 段），
 #      不再因为一个包失败就中断整轮 —— 但用 `set -o pipefail` 保住错误可见。
@@ -40,7 +40,7 @@ os_id() {
   esac
 }
 
-# 取路径最后一段：`daipeihust/tap/im-select` → `im-select`。
+# 取路径最后一段：`user/tap/formula` → `formula`。
 # 与 macview 的 basename() 保持一致 —— 两边的「这个包叫什么」必须同一个答案。
 basename_of() {
   local name="$1"

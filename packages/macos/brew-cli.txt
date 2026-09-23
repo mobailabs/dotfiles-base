@@ -34,5 +34,4 @@ zoxide
 the_silver_searcher
 oath-toolkit
 ffmpeg
-daipeihust/tap/im-select
 pngpaste
