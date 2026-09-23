@@ -47,8 +47,13 @@ macview 直接读，不猜。
 4. **契约是数据，不是逻辑。**
    shell 端写、macview 读。macview 不需要执行 shell 就能知道状态。
 
-5. **向后兼容、向前可扩展。**
-   加字段不破坏旧读取方；`version` 变化才是不兼容。
+5. **读取方永远不需要「推断」。**
+   每个判断依据都必须是字段本身，而不是字段的组合推理或外部约定。
+   反例（已避免）：「`~/.ssh/config.local` 不存在」到底算 `absent` 还是
+   `incomplete`？光看 target 无法判断 —— 必须有 `source_rel` 作为依据。
+
+6. **向后兼容、向前可扩展。**
+   加字段不破坏旧读取方；`version` 变化才是不兼容（读取规则见下）。
 
 ---
 
@@ -72,32 +77,81 @@ macview 直接读，不猜。
 {
   "version": 1,
 
-  // 什么时候、被谁写的
-  "checked_at": "2026-09-23T12:00:00Z",
-  "generated_by": "install.zsh 1.0.0",   // 或 "prompt-once.zsh" 等
+  // 什么时候、被谁写的。时间戳用 Unix 秒（整数），避免各家日期格式不一致：
+  // macview 是 Swift，ISO8601DateFormatter 默认不接受小数秒，容易解析失败。
+  "checked_at": 1790147806,
+  "generated_by": "private-state.zsh",   // 产出脚本名
 
   // 私有源本身（数据从哪来）
   "source": {
     "kind": "none",          // none | git | dir | cloud
-    "path": null,            // git/dir 时的本地路径
+    "path": null,            // git/dir 时的本地绝对路径（无 ~，读取方直接可用）
     "remote": null,          // git/cloud 时的远程地址
     "present": false,        // 本地是否已经拿到
-    "detail": null           // 失败原因等自由文本，给界面显示
+    "detail": null           // 与源整体相关的补充说明（失败原因等），见「detail 的语义」
   },
 
-  // 四个落点，每个一条
+  // 四个落点，每个一条。数组有序，展示顺序即此顺序。
   "slots": [
     {
       "id": "zshrc",
-      "target": "~/.zshrc.local",
-      "loaded_by": "~/.zshrc",          // 谁来读它（帮助用户理解）
-      "status": "missing",              // ok | missing | incomplete | placeholder
-      "effect": null                    // status=ok 时才有意义，见下
+      "source_rel": "zshrc.local",     // 源内相对路径；据此判断「源声明了这一项吗」
+      "target": "/Users/you/.zshrc.local",  // 绝对路径（读取方直接用，不做 ~ 展开）
+      "loaded_by": "/Users/you/.zshrc",     // 谁来读它（帮助用户理解）
+      "status": "absent",              // ok | absent | incomplete | placeholder
+      "effect": null                   // status=ok 时才有意义，见下
     }
     // …gitconfig / envconfig / ssh，共四条
   ]
 }
 ```
+
+### `slots[].source_rel`：契约的核心字段
+
+**「源里有没有这一项」只能靠它判断** —— 这正是 `absent` 和 `incomplete`
+能区分开的原因。
+
+检测器逻辑一句话：
+
+```
+源里 <source.path>/<source_rel> 存在吗？
+  ├─ 不存在            → 源没声明这一项 → absent
+  └─ 存在              → 声明了 → 再看有没有落到 target → ok / incomplete / placeholder
+```
+
+为什么用「每个槽位带源内相对路径」而不是「源级一个 declares 列表」：
+
+- 不需要在检测器里硬编码「id → 源内路径」的映射表
+- 能表达**任意嵌套** —— `ssh` 是 `ssh/config.local`（带子目录），
+  其它是平铺一个文件，同一个字段两种都写得出来
+- 加第五个槽位时只加一条 slot，不动源级字段
+
+### `version`：读取方遇到不认识的版本怎么办
+
+原则 6 说「加字段不破坏旧读取方」—— 那是指**同一 version 内**加字段。
+跨 version 必须显式处理：
+
+- **读取方看到 `version` > 自己已知的** → **不要尝试解析**，显示
+  「状态文件来自更新的版本，请升级 macview」，并提供「重新检测」按钮。
+  宁可说不知道，也不要误报。
+- **`version` < 已知** → 尽力解析；缺的字段按 `null` / 空处理。
+- **没有 `version` 字段** → 视为损坏，同「文件不存在」处理。
+
+这就是为什么 `version` 必须是**整数且从 1 起递增**，而不是字符串。
+
+### `detail` 的语义
+
+`source.detail` **只放与整个源相关的说明**，典型就是「源拿不到」的原因：
+
+```jsonc
+{ "kind": "git", "present": false,
+  "detail": "git clone 失败：Repository not found" }
+```
+
+- **它不是「错误字段」** —— `present = true` 时通常是 `null`。
+- 槽位级的失败**不要**写这里 —— 用该槽位的 `status = "incomplete"`，
+  文案由 macview 自己组织。`detail` 只是给「源整体」兜底的自由文本。
+- 需要更细的机器可读错误码时再扩展，当前保持自由文本。
 
 ### `source.kind` 的含义
 
@@ -117,37 +171,71 @@ macview 直接读，不猜。
 
 | status | 含义 | macview 该显示成 |
 |---|---|---|
-| `ok` | 文件在，且**效果**验证通过 | ✅ 正常 |
-| `missing` | 私有源里没这一项，或没配私有源 | ⚪ 可选（不是错误） |
-| `incomplete` | 该项**应该**在（源里声明了）但落地失败 / 链接悬空 | 🔴 这是 bug，要修 |
-| `placeholder` | 文件在，但内容还是占位/模板值 | 🟡 提醒用户去填 |
+| `ok` | target 在，且**效果**验证通过 | ✅ 正常 |
+| `absent` | **源里没这一项**（`source_rel` 不存在） | ⚪ 可选（不是错误） |
+| `incomplete` | 源里**有**，但没落到 target（链接断 / 复制失败 / 权限不对） | 🔴 这是 bug，要修 |
+| `placeholder` | target 在，但内容还是占位 / 模板值 | 🟡 提醒用户去填 |
 
-**`missing` 和 `incomplete` 的区别是这份契约存在的全部理由。**
+判定表（检测器按下表产出，无歧义）：
 
-- `missing`：源里压根没有 → 用户没打算配 → 不该报警
-- `incomplete`：源里**有**，但没落到 `$HOME`（链接断、复制失败、权限不对）
-  → 这是配置错误，必须显式报出来（对应 `greened` 的 `stale link` 报告）
+| 源里有 `source_rel` 吗 | target 在吗 | 内容有效吗 | status |
+|---|---|---|---|
+| 否 | — | — | `absent` |
+| 是 | 否 | — | `incomplete` |
+| 是 | 是 | 占位 / 模板值 | `placeholder` |
+| 是 | 是 | 有效 | `ok` |
+
+**`absent` 和 `incomplete` 的区别是这份契约存在的全部理由。**
+
+- `absent`：源里压根没有 → 用户没打算配 → **不该报警**
+- `incomplete`：源里**有**，但没落到 `$HOME` → **这是配置错误，必须显式报出来**
+  （对应 `greened` 的 `stale link` 报告）
+
+#### 「根本没配私有源」怎么表示
+
+**没有单独的 status 值。** 它就是 `source.kind == "none"` + **所有 slot 都是 `absent`**。
+
+不把「没配源」塞进某个 slot 的 status，因为它是**源级**的事实，不是槽位级的事实。
+macview 的判断规则（一条）：
+
+```
+if source.kind == "none"  → 显示「还没设置私有源（可选）」+ 引导
+elif 存在 status == "incomplete" → 显示为 bug
+...
+```
+
+这样 macview 永远不需要「推断」，只需按字段读。
 
 ### `slots[].effect`：验证「真的生效了吗」
 
-`status = ok` 时填一个**实际解析出来的值**，而不是「文件存在」：
+`status = ok` 时填一个**实际解析出来的值**，而不是「文件存在」。
+
+**`effect` 的约定（这是硬约定，不是示意）：**
+
+> `effect` 是一个 **string → string 的扁平对象**，键是「可被一条命令验证的配置项」，
+> 值是该命令在当前机器上**实际取到的值**。macview 只负责显示 `键: 值`，
+> **不需要理解每个键的语义**。
 
 ```jsonc
-// gitconfig 槽位
+// gitconfig 槽位：键就是 git config 的键名
 { "id": "gitconfig", "status": "ok",
   "effect": { "user.email": "cole@example.com", "user.name": "cole" } }
 
-// ssh 槽位
+// ssh 槽位：私有 host 名，逗号分隔（扁平对象里不放数组）
 { "id": "ssh", "status": "ok",
-  "effect": { "hosts": ["github-work", "internal-git"] } }   // 私有 host 名列表
+  "effect": { "hosts": "github-work,internal-git" } }
 
-// zshrc / envconfig 槽位
+// zshrc / envconfig 槽位：放一个能证明「真被加载了」的探针值
 { "id": "zshrc", "status": "ok",
-  "effect": { "exports": 12 } }      // 或者别的可验证的量化指标
+  "effect": { "DOTFILES_PRIVATE_LOADED": "1" } }
 ```
 
-这三个对象分别要塞进上面 `slots[]` 里对应元素的位置（上面为了简洁只留了
-`zshrc` 一条）。
+- **值是 string**：类型统一，macview 不用分支处理数组 / 数字 / 布尔。
+  需要表达列表时用**分隔字符串**（如上面的 `hosts`）。
+- **不要放统计量**（如「导出了几个变量」）—— 那是健康度指标，不是「配置生效」
+  的证据，塞进来会让读取方无法统一渲染。要统计量就另开字段（当前不需要）。
+- **键必须是可验证的** —— 检测器要能真的跑出这个值来。填不出来的槽位
+  `effect` 保持 `null`。
 
 为什么要这样：研究里 chezmoi 的 `verify` 和 sops-nix 的求值期校验都说明 ——
 **「文件存在」不等于「配置生效」**。占位邮箱的文件是存在的，但 commit 出来是错的。
@@ -189,34 +277,53 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 
 ### 2. 状态产出点
 
-需要在「shell 端跑到相关步骤时」产出契约文件：
+契约文件由**一个脚本**产出，两个调用方：
 
-| 产出时机 | 谁写 | 覆盖哪些槽位 |
+| 产出时机 | 谁调 | 覆盖哪些槽位 |
 |---|---|---|
-| `install.zsh` 的 prompt-once 步骤 | `prompt-once.zsh` | 全部（此时刚处理完 gitconfig / ssh） |
-| 单独的检测命令（待定） | 新增脚本 | 全部（macview 主动调用时） |
+| `install.zsh` 的 prompt-once 步骤 | `prompt-once.zsh` 调 `private-state.zsh --write` | 全部（此时刚处理完 gitconfig / ssh） |
+| macview 主动检测 | macview 调 `private-state.zsh --stdout` | 全部（只读，不落盘） |
+
+`scripts/common/private-state.zsh` 只做一件事：检查四个槽位 → 输出 / 写入状态。
+它**不装东西、不改 `$HOME`**（除了 `--write` 时的状态文件本身），
+和 `brew-audit.zsh` 是同一类「只读检测器」。
 
 ---
 
 ## macview 这一侧要怎么用（暂未实施）
 
-1. 读 `~/.config/dotfiles/private-state.json`
-2. 文件**不存在** → 说明还没跑过 install → 显示「还没检测过」，而不是「没配」
-3. 按 `slots[].status` 做**四态**渲染（见上表）
-4. `source.kind = cloud` 时走服务的 UI（将来）
-5. **不要自己推断** —— 有契约就信契约，没契约就显示「未知」
+1. 读 `~/.config/dotfiles/private-state.json`（文件不存在 → 见第 2 步）
+2. 文件**不存在 / 无 `version` / `version` 高于已知** → 显示「还没检测过」或
+   「请升级 macview」，**不要**当成「没配私有源」
+3. **`source.kind == "none"` 且所有 slot 为 `absent`** → 「还没设置私有源（可选）」
+4. 按 `slots[].status` 做**四态**渲染（见上表）；`incomplete` 标成 bug
+5. `source.kind = cloud` 时走服务的 UI（将来）
+6. **不要自己推断** —— 有契约就信契约，没契约就显示「未知」
 
 ---
 
-## 尚未决定的事
+## 已决定 / 尚未决定
 
-契约冻结前要拍板：
+### 已决定
 
-- [ ] `slots` 用数组还是对象（数组顺序稳定、对象查表快）
-- [ ] `effect` 的字段是否要按槽位分别定义（现在比较自由）
-- [ ] 检测命令的入口：`install.zsh private` 子命令？还是独立脚本？
-- [ ] `generated_by` 的版本怎么取（仓库没有版本号）
-- [ ] 契约文件不存在时，macview 的文案
+- [x] `slots` 用**数组**（有序；macview 是列表 UI，顺序本身是信息）
+- [x] 「源声明了什么」用 **`slots[].source_rel`**，不用源级 `declares` 列表
+      （免硬编码映射，且能表达 ssh 的嵌套）
+- [x] `missing` 拆成 **`absent`**；「没配源」由 `source.kind == none` 表达
+- [x] `effect` 是**扁平 string→string 对象**，只放可验证的配置键值
+- [x] `checked_at` 用 **Unix 秒（整数）**
+- [x] `target` / `loaded_by` 用**绝对路径**（读取方不做 `~` 展开）
+- [x] `version` 的读取规则（高版本 → 拒绝解析并提示升级）
+- [x] 检测入口：**独立脚本 `scripts/common/private-state.zsh`**，双 flag
+      （`--write` 落盘给 prompt-once 用，`--stdout` 输出给 macview 用），
+      一份检测逻辑两个调用方；**不做** `install.zsh private` 子命令
+      （那会让 install 变成 macview 的入口，职责混乱）
+
+### 尚未决定
+
+- [ ] `generated_by` 的版本怎么取（仓库没有版本号 → 先写脚本名，不带版本）
+- [ ] 槽位 `loaded_by` 在 target 尚未链接时填什么（源里的期望值？留 null？）
+- [ ] `placeholder` 的判定标准（怎么算「占位」—— 字符串匹配？还是显式标记？）
 
 ---
 
@@ -227,5 +334,5 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 
 - **§7.1** 公开仓库不点名私有文件 → 用 glob（→ 本文「设计原则 1」、SSH 改造）
 - **§7.2** 验证效果而非文件存在 →（→ 本文 `effect` 字段）
-- **§7.3** 两级报告：未安装 vs 装了但不全 →（→ 本文 `missing` vs `incomplete`）
+- **§7.3** 两级报告：未安装 vs 装了但不全 →（→ 本文 `absent` vs `incomplete`）
 - **§3** 业界普遍没有 overlay 验证器，`greened` 的 stale-link 报告是例外 → 这正是 macview 的机会
