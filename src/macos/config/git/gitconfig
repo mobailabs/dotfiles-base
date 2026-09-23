@@ -46,15 +46,25 @@
 [remote "origin"]
     #fetch = +refs/heads/*:refs/remotes/origin/*
 
-# Keep identity and signing settings in ~/.gitconfig.local (private overlay).
-# Example (in ~/.gitconfig.local):
+# 身份与签名设置放在 ~/.gitconfig.local（私有的 overlay，不进仓库）。
+#
+# ⚠️ 必须自己建这个文件，否则**一次 commit 都提交不了**：
+#   本文件末尾 `[user] useConfigOnly = true` 会禁用 git 的自动探测身份，
+#   没有 name/email 时 git 直接拒绝 commit（Author identity unknown）。
+#   这是刻意的 —— 防止换机器后拿主机名 / 系统用户名当邮箱提交出错。
+#
+# 建一次即可（两台机器各自建，内容不同也不进仓库）：
+#   cat > ~/.gitconfig.local <<'EOF'
 #   [user]
-#     name = Your Name
-#     email = your@email.com
+#       name = Your Name
+#       email = your@email.com
+#   EOF
+#
+# 需要 GPG 签名时再加：
 #   [commit]
-#     gpgsign = true
+#       gpgsign = true
 #   [gpg]
-#     program = /opt/homebrew/bin/gpg
+#       program = gpg        # 不写死路径，靠 PATH 找（brew 装在 /opt/homebrew 或 /usr/local）
 
 [pull]
 	rebase = false
@@ -97,6 +107,9 @@
 [log]
     date = format:%Y-%m-%d %H:%M:%S
 [user]
+	# 禁用自动探测身份：必须由 ~/.gitconfig.local 显式提供 name/email，
+	# 否则 commit 会以「Author identity unknown」失败。
+	# 这是故意的 —— 见上方 include 附近的说明。
 	useConfigOnly = true
 [credential "https://github.com"]
 	helper = 

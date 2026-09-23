@@ -48,9 +48,11 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 # 网络：能连到 github 就行（brew / git clone 都依赖它）。
-# 用 curl 短超时，别让预检本身卡住。
+# 用 curl 短超时，别让预检本身卡住；但不设太短 —— 5s 会偶发误报
+# （网络抖一下就把「其实能连」报成「连不上」）。这只是 warning、不阻断，
+# 放宽到 10s 让提示更可信。
 if command -v curl >/dev/null 2>&1; then
-  if ! curl -fsSL --max-time 5 -o /dev/null https://github.com 2>/dev/null; then
+  if ! curl -fsSL --max-time 10 -o /dev/null https://github.com 2>/dev/null; then
     warn+=("连不上 github.com —— 后面的 brew / git clone 很可能失败")
   fi
 fi
