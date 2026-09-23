@@ -59,8 +59,9 @@ _failed_steps=()
 # 这样 `"${INSTALL_ARGS[@]}"` 在 set -u 下也不会因「未定义」而报错。
 INSTALL_ARGS=()
 
-# 后台刷新 sudo 时间戳的 PID（0 = 没在跑）。
+# 后台刷新 sudo 时间戳的 PID（0 = 没在跑），以及它内部 sleep 的 PID 文件。
 _SUDO_KEEPALIVE_PID=0
+_SUDO_KEEPALIVE_SLEEPFILE=""
 
 # ── sudo keep-alive ─────────────────────────────────────────────────────
 #
@@ -76,22 +77,83 @@ start_sudo_keepalive() {
   # 没有预授权就不必开（否则只是个空转的循环）
   sudo -n true 2>/dev/null || return 0
 
+  # ⚠️ 不要把 `sleep 60` 直接放在后台 subshell 里。
+  #
+  # 踩过的坑：`kill <subshell_pid>` 只杀 subshell，它内部**正在跑的 sleep
+  # 会变成孤儿继续睡**（已实测）——中断安装后，后台残留一个每 60s 跑一次
+  # sudo 的循环，永远不停。
+  #
+  # 踩过的更大的坑：为杀掉整个进程组而 `set -m`（开作业控制）——
+  # 在非交互脚本里 zsh 直接报 `can't change option: -m`，叠加上
+  # `set -e`，**整个 install.zsh 会在这里静默失败的退出**（已实测）。
+  # 比泄漏严重得多，绝对不能用。
+  #
+  # 正确做法：subshell 只负责「睡 60s 再刷一次」，把**当前 sleep 的 PID**
+  # 写到文件里。stop 时连它一起杀 —— 没有孤儿，也不需要作业控制。
+  _SUDO_KEEPALIVE_SLEEPFILE="$(_sudo_keepalive_sleepfile)"
+  rm -f "$_SUDO_KEEPALIVE_SLEEPFILE" 2>/dev/null || true
+
   (
     while true; do
       sudo -n true 2>/dev/null || exit 0
-      sleep 60
+      # 把 sleep 换成可被外部杀掉的写法：后台 sleep + 等它。
+      # 这样 stop 时能通过文件里的 PID 精确杀掉这个 sleep。
+      sleep 60 &
+      echo $! > "$_SUDO_KEEPALIVE_SLEEPFILE"
+      wait $! 2>/dev/null || exit 0
     done
   ) &
   _SUDO_KEEPALIVE_PID=$!
   echo "sudo 预授权已保持（后台每 60s 刷新）。"
 }
 
+# keep-alive 里「当前 sleep」的 PID 文件路径。
+_sudo_keepalive_sleepfile() {
+  echo "${TMPDIR:-/tmp}/dotsu-sudo-keepalive.$$"
+}
+
 stop_sudo_keepalive() {
+  # 顺序很重要：先停 subshell，**再**删文件。
+  # 反过来的话，subshell 的下一轮循环会立刻把文件重新写出来 —— 实测会残留。
   if (( _SUDO_KEEPALIVE_PID > 0 )); then
-    kill "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    # 干掉 keep-alive 里当前那个 sleep（否则它成孤儿继续睡）
+    if [[ -n "${_SUDO_KEEPALIVE_SLEEPFILE:-}" ]]; then
+      local sp
+      sp="$(cat "$_SUDO_KEEPALIVE_SLEEPFILE" 2>/dev/null || true)"
+      [[ -n "$sp" ]] && kill -TERM "$sp" 2>/dev/null || true
+    fi
+    kill -TERM "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
     wait "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    kill -KILL "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
     _SUDO_KEEPALIVE_PID=0
   fi
+  # subshell 确定停了，现在删文件不会被重新创建。
+  [[ -n "${_SUDO_KEEPALIVE_SLEEPFILE:-}" ]] && \
+    rm -f "$_SUDO_KEEPALIVE_SLEEPFILE" 2>/dev/null || true
+}
+
+# Ctrl-C / kill 的处理。
+#
+# ⚠️ 只设 EXIT 是不够的。实测 zsh 非交互脚本的行为差异很大：
+#
+#   SIGINT  → 给了 INT trap 后信号被吞掉，脚本**继续往下跑**，必须显式 exit；
+#             此时 EXIT trap 会执行（cleanup 能跑）。
+#   SIGTERM → zsh **直接死掉，EXIT trap 根本不执行**（退出码 143），
+#             cleanup 被跳过 —— 后台 keep-alive 变成永久残留。
+#
+# 所以 INT 和 TERM 都要显式处理。trap 里 exit 会再触发 EXIT trap，
+# 于是 cleanup 可能跑两次 —— stop_sudo_keepalive 是幂等的（跑完把 PID 归零），
+# 但提示语只该说一次，用一个标记位挡住。
+_interrupt_announced=0
+on_interrupt() {
+  local code="$1"
+  stop_sudo_keepalive
+  if (( ! _interrupt_announced )); then
+    _interrupt_announced=1
+    echo "" >&2
+    echo "已中断（后台进程已清理）。重跑 'zsh install.zsh' 可从断点继续（幂等）。" >&2
+  fi
+  exit "$code"
 }
 
 run_step() {
@@ -125,8 +187,12 @@ run_base() {
 
   # prompt-once 可能刚做了 sudo 预授权。装包动辄十几分钟，而时间戳默认
   # 5 分钟就过期 —— 开个后台循环持续刷新，否则 prefs 那步会重新弹密码。
-  # 无论中途怎么退出（成功/失败/被 kill）都要收掉这个后台进程。
-  trap 'stop_sudo_keepalive' EXIT INT TERM
+  # 无论怎么退出（成功 / 失败 / Ctrl-C）都要收掉这个后台进程，否则它会
+  # 一直留在后台每 60s 跑一次 sudo。EXIT 管正常与错误退出，INT/TERM 走
+  # on_interrupt（先清理再退出）。
+  trap 'stop_sudo_keepalive' EXIT
+  trap 'on_interrupt 130' INT
+  trap 'on_interrupt 143' TERM
   start_sudo_keepalive
 
   run_step "Homebrew + 包" "$SCRIPT_DIR/scripts/macos/brew-install.zsh"
@@ -170,8 +236,15 @@ main() {
   while (( $# > 0 )); do
     case "$1" in
       --name|--email)
-        # 带值的选项：连值一起收进 INSTALL_ARGS
-        INSTALL_ARGS+=("$1" "${2:-}")
+        # 缺值必须**明确报错**：否则 `--name` 后面没跟东西时，
+        # `shift 2` 会打出 `shift count must be <= $#` 这种看不懂的内部
+        # 错误，而且脚本还以 0 退出（静默什么都没做）—— 已实测。
+        if (( $# < 2 )) || [[ -z "$2" ]]; then
+          echo "Option $1 requires a value." >&2
+          usage
+          exit 1
+        fi
+        INSTALL_ARGS+=("$1" "$2")
         shift 2
         ;;
       --yes|-y)
