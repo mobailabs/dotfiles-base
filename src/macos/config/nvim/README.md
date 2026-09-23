@@ -23,7 +23,7 @@
 | `lua/lazy_setup.lua` | lazy.nvim 引导 + AstroNvim 选项（leader 为空格） |
 | `lua/community.lua` | astrocommunity 语言包与功能包（见下） |
 | `lua/plugins/astrocore.lua` | vim 选项、mappings、autocmds |
-| `lua/plugins/astroui.lua` | 主题（`astrodark`）、图标 |
+| `lua/plugins/astroui.lua` | 主题（`catppuccin`）、图标 |
 | `lua/plugins/astrolsp.lua` | LSP：codelens、格式保存、按键 |
 | `lua/plugins/mason.lua` | 自动装 lua-language-server / stylua / debugpy / tree-sitter-cli |
 | `lua/plugins/none-ls.lua` | 额外格式化 / 诊断源（当前为空，按需加） |
@@ -34,7 +34,8 @@
 **语言支持**（由 `community.lua` 的 astrocommunity pack 提供）：
 Lua、Rust、Python、Go、TypeScript（all-in-one）。
 
-**其它**：catppuccin 主题（装了但当前用的是 astrodark）、Copilot、opencode.nvim、
+**其它**：catppuccin 主题（在 `community.lua` 导入，`astroui.lua` 的
+`colorscheme` 指的就是它）、Copilot、opencode.nvim、
 img-clip、dropbar、hop。
 
 ## 加东西改哪里
