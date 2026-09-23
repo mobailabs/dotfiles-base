@@ -108,7 +108,7 @@ setup_git_identity() {
     if [[ -n "$have_name" || -n "$have_email" ]]; then
       local missing="name"
       [[ -n "$have_name" || -n "$GIT_NAME" ]] && missing="email"
-      echo "  ! ~/.gitconfig.local 的身份不完整（缺 $missing），本次也没提供；保持原样。"
+      echo "  ! ~/.gitconfig.local 的身份不完整（缺 ${missing}），本次也没提供；保持原样。"
     else
       echo "  ! 没有 git 身份；跳过（之后可建 ~/.gitconfig.local 补上）。"
     fi
@@ -214,7 +214,7 @@ setup_ssh_include() {
 
     cp -p "$ssh_config" "$backup" 2>/dev/null || true
     mv "$tmp" "$ssh_config"
-    echo "  已把 Include 插到 ~/.ssh/config 顶部（原文件备份：$backup）。"
+    echo "  已把 Include 插到 ~/.ssh/config 顶部（原文件备份：${backup}）。"
   else
     printf '%s\n' "$line" > "$ssh_config"
     chmod 600 "$ssh_config"
