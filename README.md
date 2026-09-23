@@ -100,8 +100,9 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 │   ├── common/brew-cli.txt
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
-│   ├── common/              ← brew / 插件 / 链接 / mise / 对账
+│   ├── common/              ← brew / 插件 / 链接 / mise / 对账 / 私有源状态
 │   │   ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
+│   │   ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
 │   │   └── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
 │   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
@@ -204,7 +205,15 @@ DOTFILE_LINKS=(
 
 **私有源**这一块，两边靠 [`private.md`](private.md) 定义的状态契约交接：
 macview 读 `~/.config/dotfiles/private-state.json`，就能区分「没有私有源」
-（正常）和「有但没装好」（要修）。契约格式已定，两侧实现都还没做。
+（正常）和「有但没装好」（要修）。
+
+这个文件由 `scripts/common/private-state.zsh` 产出，两个调用方：
+
+- `install.zsh` 的 prompt-once 步骤跑 `--write`（每次安装后刷新）
+- macview 需要时可跑 `--stdout`（只读，不落盘）
+
+**dotfiles 侧已实现；macview 侧的读取还没做**（见 `private.md` 的
+「macview 这一侧要怎么用」）。
 
 落点清单是**两边各维护一份**：`link-dotfiles.zsh` 的 `DOTFILE_LINKS` 是命令行版
 依据，macview 自己另存一份。两边可能漂移，但漂移**可检测** —— 仓库里有源、

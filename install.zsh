@@ -203,6 +203,9 @@ run_base() {
   # 把所有需要人参与的事情**集中到这里一次问完**（git 身份、sudo 预授权、
   # ssh include）。之后每一步都是零交互 —— 这样你可以敲一条命令然后走开，
   # 不用守在旁边等某个 sudo 提示。
+  #
+  # 它最后还会写一份「私有源状态」给 macview 读（契约见 private.md）——
+  # 之所以放这里，是因为此刻身份和 ssh 都刚处理完，记下的才是真实状态。
   run_step "一次性设置（身份 / 权限 / ssh）" \
     "$SCRIPT_DIR/scripts/common/prompt-once.zsh" "${INSTALL_ARGS[@]}"
 

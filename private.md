@@ -102,7 +102,8 @@ macview 直接读，不猜。
       "target": "/Users/you/.aliases",
       "loaded_by": "/Users/you/.zshrc",
       "status": "absent",              // ok | absent | incomplete | placeholder
-      "effect": null                   // 仅 status=ok 时非 null，见下
+      "effect": null,                  // 仅 status=ok 时非 null，见下
+      "why": null                      // 仅 status=incomplete 时非 null，见下
     },
     {
       "id": "zshrc-local",
@@ -111,7 +112,8 @@ macview 直接读，不猜。
       "target": "/Users/you/.zshrc.local",
       "loaded_by": "/Users/you/.zshrc",
       "status": "absent",
-      "effect": null
+      "effect": null,
+      "why": null
     },
     {
       "id": "envconfig-local",
@@ -120,7 +122,8 @@ macview 直接读，不猜。
       "target": "/Users/you/.envconfig.local",
       "loaded_by": "/Users/you/.envconfig",
       "status": "absent",
-      "effect": null
+      "effect": null,
+      "why": null
     },
     {
       "id": "git-local",
@@ -129,7 +132,8 @@ macview 直接读，不猜。
       "target": "/Users/you/.gitconfig.local",
       "loaded_by": "/Users/you/.gitconfig",
       "status": "absent",
-      "effect": null
+      "effect": null,
+      "why": null
     },
     {
       "id": "ssh-local",
@@ -138,7 +142,8 @@ macview 直接读，不猜。
       "target": "/Users/you/.ssh/config.local",
       "loaded_by": "/Users/you/.ssh/config",
       "status": "absent",
-      "effect": null
+      "effect": null,
+      "why": null
     }
   ]
 }
@@ -315,6 +320,20 @@ macview 现有的三个 JSON 全在 `~/Library/Application Support/macview/`，
 
   `present = false` 时，所有 slot 的 `status` 填 **`incomplete`**，
   并且 `source.detail` 写明原因（如 `git clone 失败：Repository not found`）。
+
+  > ⚠️ **现实中这一行触发不了 —— 这是本契约的已知局限，不是 bug。**
+  >
+  > 「配了源但没 clone 下来」要能被认出来，本机必须**记得**这件事。
+  > 但 `PRIVATE_DIR`（默认 `~/private-dotfiles`）只是一个**路径约定**：
+  > 目录不在时，「配过但没了」和「从没配过」在磁盘上**一模一样**。
+  > macview 也没有任何持久记录（`Diff/Collect.swift:57` 就是拼个默认路径）。
+  >
+  > 所以当前实现里：目录不在 ⇒ `kind = "none"` ⇒ 各槽位按「源里没有」走
+  > （全 `absent`）。这是**诚实的**：本机确实没有任何证据说它曾经配过。
+  > 想真正支持第 0 行，需要一个持久标记（比如把 `source.remote` 记在
+  > 状态文件里、下次读回来）；那是**扩展**，`version` 不变，现在不做。
+  >
+  > 换言之：`source.detail` 当前只在「源在、但读它出问题」时才有值。
   这样 macview 一看就知道「源整体没拿到」，而不是「五项都没配」。
 
 - **第 2 行优先于第 3 行**：源里那份还是模板 → 不管有没有链过去，都是
@@ -425,6 +444,24 @@ elif 存在 status == "placeholder"                 → 提醒去填
 > 模板由私有源提供（不在公开仓库里，见设计原则 1），但公开仓库的文档
 > 会告诉用户哨兵这个约定 —— 它是**公开协议**，不是私有约定。
 
+### `slots[].why`：为什么是 `incomplete`
+
+**只在 `status = incomplete` 时非 null，其余三态一律 `null`。**
+
+`incomplete` 有**四种**成因，光看 status 分不出来，而用户的下一步动作不同：
+
+| 何时 | `why` 举例 | 用户该做什么 |
+|---|---|---|
+| 源里有、target 没有 | `源里有，但没落到 /Users/you/.gitconfig.local` | 跑 install / 检查链接 |
+| target 在、内容取不到值 | `target 在，但取不到任何验证值（内容为空 / 解析失败）` | 填值 |
+| 源整体没拿到 | `私有源已被配置，但本地不存在` | 拉私有源 |
+
+> 这是设计原则 5「读取方永远不需要推断」的落实：macview 要显示
+> 「为什么红」，就该有个字段直接告诉它，而不是让它按 status 去猜。
+>
+> 它是**给人看的自由文本**，不是机读错误码。需要机读码时再扩展，
+> `version` 不变。macview 不认识这个字段时忽略即可（向后兼容）。
+
 ### `slots[].effect`：验证「真的生效了吗」
 
 **`effect` 只在 `status = ok` 时非 null。** 其它三个状态（`absent` /
@@ -465,13 +502,18 @@ elif 存在 status == "placeholder"                 → 提醒去填
 { "id": "git-local", "status": "ok",
   "effect": { "user.email": "cole@example.com", "user.name": "cole" } }
 
-// ssh-local 槽位：私有 host 名，逗号分隔（扁平对象里不放数组）
+// ssh-local 槽位：私有 host 名，空格分隔（扁平对象里不放数组）
 { "id": "ssh-local", "status": "ok",
-  "effect": { "hosts": "github-work,internal-git" } }
+  "effect": { "hosts": "github-work internal-git" } }
 
 // zshrc-local / envconfig-local 槽位：放一个能证明「真被加载了」的探针值
 { "id": "zshrc-local", "status": "ok",
   "effect": { "DOTFILES_PRIVATE_LOADED": "1" } }
+
+// aliases 槽位：**没有探针**（它是别名清单，本来就该一直有内容）。
+// 生效判据 = 能从 target 里解析出别名。值先给个数 + 前几个名字。
+{ "id": "aliases", "status": "ok",
+  "effect": { "aliases": "12: gs,ga,gc 等" } }
 ```
 
 - **值是 string**：类型统一，macview 不用分支处理数组 / 数字 / 布尔。
@@ -480,6 +522,19 @@ elif 存在 status == "placeholder"                 → 提醒去填
   的证据，塞进来会让读取方无法统一渲染。要统计量就另开字段（当前不需要）。
 - **键必须是可验证的** —— 检测器要能真的跑出这个值来。跑不出来的槽位
   就是 `incomplete`（`effect` 为 `null`），不会是 `ok`。
+
+**每个槽位怎么证明「生效了」—— 三种，别混：**
+
+| 槽位 | 判据 | 为什么是它 |
+|---|---|---|
+| `zshrc-local` / `envconfig-local` | 真的 source 一遍，取 `DOTFILES_PRIVATE_LOADED` | 这两个文件的内容本来就是「填进去的变量」，探针顺理成章 |
+| `git-local` | `git config --file <target> --get user.name / user.email` | 用 git 自己解析，不手写 INI |
+| `ssh-local` | 从 target 里解析 `Host` 名（排除 `*` 通配） | 只读一行字，不验证连通性 |
+| `aliases` | 从 target 里解析 `alias <名>=<命令>`，数出至少一个 | **它没有「填了没」的问题** —— 别名文件本来就有内容；判据只能是「解析得出来吗」 |
+
+> `aliases` 的解析规则**和 macview 的 `parseAliases`
+> （`Settings/Inspect.swift:438`）保持一致**：跳过 `#` 行、要求行首是
+> `alias `、可有可无的 `--`、取第一个 `=` 左边。两边不一致 → 界面数字对不上。
 
 为什么要这样：研究里 chezmoi 的 `verify` 和 sops-nix 的求值期校验都说明 ——
 **「文件存在」不等于「配置生效」**。占位邮箱的文件是存在的，但 commit 出来是错的。
@@ -633,6 +688,13 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
       （`ok` = 「落到 `$HOME` 的那份生效了」，源对了但没链过去不算）
 - [x] 判定顺序**先看 target 在不在，再取 `effect`**；两条判定不可合并
       （合并会把「没链接」和「链接了但内容空」压成同一个 `incomplete`）
+- [x] 新增 `slots[].why`：**仅 `incomplete` 时非 null**，说明是哪一种成因
+      （给人看的自由文本，非机读码；未知字段读取方忽略即可）
+- [x] `aliases` 的生效判据 = **能从 target 解析出至少一个 `alias`**，
+      解析规则与 macview 的 `parseAliases`（`Settings/Inspect.swift:438`）一致
+- [x] `present = false`（配了源没拉下来）**当前无法触发** ——
+      没有持久记录能区分「配过但没了」和「从没配过」，详见判定表第 0 行的说明。
+      要做需要扩展（记住 `source.remote`），现在不做
 
 ### 尚未决定
 

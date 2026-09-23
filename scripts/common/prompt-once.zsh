@@ -229,6 +229,32 @@ main() {
   setup_git_identity
   preauth_sudo
   setup_ssh_include
+  write_private_state
+}
+
+# ── 4. 私有源状态 ──────────────────────────────────────────────────────
+# 把「私有源此刻是什么状态」写成契约文件，给 macview 读（契约见 private.md）。
+#
+# 为什么放在**最后**：前面三步刚改过 ~/.gitconfig.local 和 ~/.ssh/config，
+# 现在写出来的才是改动后的真实状态。放在前面会写进旧状态。
+#
+# 为什么在这里写、而不是单独一步：这个文件的两个调用方之一是 macview，
+# 它读的是「上次跑 install 时的状态」。prompt-once 是全流程唯一一次
+# 已经问完、可以落地状态的地方（install.zsh 的其余步骤都是纯安装）。
+write_private_state() {
+  local script="$ROOT_DIR/scripts/common/private-state.zsh"
+  if [[ ! -f "$script" ]]; then
+    echo "  ! 找不到 private-state.zsh，跳过私有源状态。" >&2
+    return 0
+  fi
+
+  # 失败不阻断：状态文件是**辅助**信息，没有它 install 也该成功。
+  # （macview 读不到就显示「还没检测过」，不是错误。）
+  if zsh "$script" --write --quiet; then
+    echo "  私有源状态已记录（给 macview 读；见 private.md）。"
+  else
+    echo "  ! 私有源状态记录失败（不影响其余步骤）。" >&2
+  fi
 }
 
 main "$@"
