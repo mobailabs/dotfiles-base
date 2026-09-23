@@ -144,7 +144,13 @@ keybind = super+p=text:\x02P
 keybind = super+r=text:\x02R
 
 # 额外快捷键
+# ⌘,  → tmux 内置 `,`（重命名窗口）；⌘⇧, → tmux 内置 `$`（重命名会话）
 keybind = super+comma=text:\x02,
 keybind = super+shift+comma=text:\x02$
 keybind = super+c=copy_to_clipboard
 keybind = super+v=paste_from_clipboard
+
+# ⚠️ 上面这些 ⌘+单字母 会**盖掉** ghostty 里对应的 macOS 原生快捷键：
+#   ⌘h 隐藏窗口 / ⌘w 关标签 / ⌘z 撤销 / ⌘n 新建 / ⌘p 打印 / ⌘r 刷新 …
+# 这是为了让「⌘+hjkl 直接操作 tmux 面板」而做的取舍 —— 只在 ghostty
+# 聚焦时生效，不影响其它 App。不想要某个就注释掉对应行。

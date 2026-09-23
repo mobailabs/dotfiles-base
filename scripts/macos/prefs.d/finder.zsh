@@ -26,11 +26,18 @@ defaults write com.apple.finder ShowRecentTags -bool false
 defaults write -g AppleShowAllExtensions -bool true
 
 # 图标显示相关设置
+#
+# ⚠️ 顺序很重要：`defaults write` 先写进 cfprefsd 内存缓存，要 killall 才落盘；
+# 而 PlistBuddy 是**直接改磁盘上的 plist**。如果顺序反了（先 PlistBuddy 再
+# killall），cfprefsd 里那些还没落盘的 defaults 值会覆盖掉 PlistBuddy 的改动。
+# 所以：先让 defaults 落盘，再 PlistBuddy，最后再刷一次缓存。
+killall "Finder" >/dev/null 2>&1 || true
+killall "cfprefsd" >/dev/null 2>&1 || true
+
 /usr/libexec/PlistBuddy -c 'Set :DesktopViewSettings:IconViewSettings:iconSize 72' \
   "$HOME/Library/Preferences/com.apple.finder.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c 'Set :StandardViewSettings:IconViewSettings:iconSize 72' \
   "$HOME/Library/Preferences/com.apple.finder.plist" 2>/dev/null || true
 
-killall "Finder" >/dev/null 2>&1 || true
 killall "cfprefsd" >/dev/null 2>&1 || true
 
