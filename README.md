@@ -121,8 +121,8 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 
 ## 落点声明：写在哪
 
-落点声明**就在 `scripts/common/link-dotfiles.zsh` 里**（`DOTFILE_LINKS` 数组），
-没有单独的 `link.map` 文件。每行两个字段，用 `|` 分隔：
+落点声明**就在 `scripts/common/link-dotfiles.zsh` 里**（`DOTFILE_LINKS` 数组）。
+每行两个字段，用 `|` 分隔：
 
 ```zsh
 DOTFILE_LINKS=(
@@ -135,11 +135,6 @@ DOTFILE_LINKS=(
 - 没有平台回退 —— 这个仓库只有 macOS，源都在 `src/macos/config/` 下，直接写全路径
 
 **加一条落点只改这里**，然后确认 `src/macos/config/` 下真的有对应的源。
-
-> 以前这份声明在一个单独的 `link.map` 文件里，理由是「声明只写一处、脚本不硬编码」。
-> 已经收回脚本，因为：这个仓库只有一个使用者，「别处也能读这份声明」的好处从没兑现过；
-> 读它还要复刻一整套 zsh 的 `read` 解析规则。macview 自己维护一份落点清单，两边会漂移 ——
-> 但那个漂移**是可检测的**（仓库里有源、`$HOME` 里没链接，对账时会报），不是静默的。
 
 替换已有文件时**不再直接删除**，而是移到 `~/.dotfiles-backup/<时间戳>/`，
 路径会打印出来。想改备份位置就设 `DOTFILES_BACKUP_DIR`。

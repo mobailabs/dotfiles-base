@@ -1,9 +1,7 @@
 # Neo-Geometric Dark (冷青极客风) —— 与 tmux 保持一致
 # 主色: #32ade6 | 亮青: #5ac8fa | 背景: #1c1c1e | 前景: #f2f2f7
 #
-# 这是唯一的 ghostty 配置。以前有 config-dark / config-eink 两份 + `config`
-# 软链切主题（eink-on/off），代价是每次切主题都会弄脏仓库工作区，
-# 而主题切换本身没有真实使用需求。现在合并成这一份，不再有可变状态。
+# 这是唯一的 ghostty 配置，没有主题切换：直接改这里。
 
 # ---- 主题配色 ----
 background = #1c1c1e
