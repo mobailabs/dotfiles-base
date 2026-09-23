@@ -61,6 +61,7 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
 │   ├── common/              ← brew / 插件 / 链接 / mise / 对账
+│   │   └── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
 │   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
 ```
@@ -146,8 +147,12 @@ DOTFILE_LINKS=(
 [macview](https://github.com/mobailabs/macview) 是这套标准的图形界面：
 **看见差异 → 一键对齐**。
 
-它读的就是这个仓库 —— `scripts/common/link-dotfiles.zsh` 的落点、`packages/*.txt`、
-`scripts/macos/prefs.d/*.zsh` 都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
+它读的就是这个仓库 —— `packages/*.txt`、`scripts/macos/prefs.d/*.zsh`
+都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
+
+落点清单是**两边各维护一份**：`link-dotfiles.zsh` 的 `DOTFILE_LINKS` 是命令行版
+依据，macview 自己另存一份。两边可能漂移，但漂移**可检测** —— 仓库里有源、
+`$HOME` 里没链接，对账时会报出来，不是静默失效。
 
 两者不冲突：`install.zsh` 是命令行版本，macview 是图形版本，改的是同一批文件。
 

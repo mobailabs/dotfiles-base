@@ -31,6 +31,14 @@ run_base() {
   "$SCRIPT_DIR/scripts/macos/check.zsh"
   "$SCRIPT_DIR/scripts/macos/brew-install.zsh"
 
+  # ⚠️ 关键：brew-install 是**子进程**，它在自己里面 eval 的 `brew shellenv`
+  # 不会回传到本进程。本进程是非交互的，PATH 还是 launchd 的最小值，
+  # 所以后面的 mise / tmux 都看不见 homebrew 装的东西 ——
+  # mise-setup 会 `command -v mise` 失败并 exit 1，而本脚本是 set -e，
+  # 整个 base 流程会在那一步中止（系统偏好排在后面，全部不生效）。
+  # 这里把 homebrew 环境补进当前进程，堵上这个缺口。
+  source "$SCRIPT_DIR/scripts/common/brew-env.zsh" || true
+
   "$SCRIPT_DIR/scripts/common/oh-my-zsh-install.zsh"
   "$SCRIPT_DIR/scripts/common/zsh-plugins-install.zsh"
   "$SCRIPT_DIR/scripts/common/link-dotfiles.zsh"

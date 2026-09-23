@@ -104,6 +104,11 @@ install_cask() {
 
 main() {
   if ! command -v brew >/dev/null 2>&1; then
+    # 非交互 shell 的 PATH 里可能没有 homebrew（见 brew-env.zsh）。
+    source "$SCRIPT_DIR/brew-env.zsh" 2>/dev/null || true
+  fi
+
+  if ! command -v brew >/dev/null 2>&1; then
     die "brew not found in PATH; run OS brew bootstrap first."
   fi
 

@@ -27,13 +27,14 @@ SCRIPT_DIR="$(cd "$(dirname "${0:A}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 这个仓库只做 macOS。不假装能跑别的平台 —— 和 check.zsh 的态度一致。
-os_id() {
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    echo "brew-audit 只支持 macOS（当前 $(uname -s)）" >&2
-    exit 2
-  fi
-  echo "macos"
-}
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "brew-audit 只支持 macOS（当前 $(uname -s)）" >&2
+  exit 2
+fi
+
+# 非交互 shell 的 PATH 里可能没有 homebrew（见 brew-env.zsh 的说明）。
+# 先补齐，否则会对着一台装好 brew 的机器报「brew not found」。
+source "$SCRIPT_DIR/brew-env.zsh" || true
 
 # 与 macview parsePackageList 同规则：去注释、取第一个**非空**字段。
 #
@@ -62,9 +63,6 @@ main() {
     echo "brew not found; 无法对账。先装 Homebrew。" >&2
     exit 2
   fi
-
-  local os
-  os="$(os_id)"
 
   # label|kind|path —— 与 macview 的 packageListFiles 对应。
   #
