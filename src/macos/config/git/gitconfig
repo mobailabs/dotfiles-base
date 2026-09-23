@@ -68,7 +68,11 @@
 	required = true
 	clean = git-lfs clean -- %f
 [safe]
-	directory = *
+	# ⚠️ 不要写 `directory = *` —— 那等于对所有目录关闭 git 的
+	# dubious-ownership 防护（他人拥有的恶意仓库可执行其配置，
+	# CVE-2022-24765 那类）。这里只放行你自己的地盘。
+	directory = ~/dotfiles
+	directory = ~/*
 [init]
 	defaultBranch = master
 [http]

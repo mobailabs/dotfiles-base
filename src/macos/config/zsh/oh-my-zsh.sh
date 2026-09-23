@@ -14,7 +14,11 @@ export ZSH=~/.oh-my-zsh
 # Look in ~/.oh-my-zsh/themes/
 # Optionally, if you set this to "random", it'll load a random theme each
 # time that oh-my-zsh is loaded.
-ZSH_THEME="robbyrussell"
+#
+# 用 gnzh：两行提示符、以浅灰前景为主，和 ghostty/tmux 的深色配色搭。
+# OmZ 默认的 robbyrussell 是蓝底箭头 + 黄色路径，在深色板里偏刺眼。
+# 想换回默认就改回 "robbyrussell"。
+ZSH_THEME="gnzh"
 
 # ============================================
 # 补全配置

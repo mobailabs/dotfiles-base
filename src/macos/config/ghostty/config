@@ -40,7 +40,8 @@ palette = 15=#ffffff
 # ---- Ghostty 行为 ----
 adjust-cell-height = 8%
 
-# 默认不自动进入 tmux，如需使用 tmux 请在 shell 中手动运行 tal/tcd 等命令
+# 默认不自动进入 tmux。想进就手动跑 `tal` / `tcd`（见 aliases.sh），
+# 或把这条改成 `command = /bin/zsh -l -c 'tal'` 之类的自动入口。
 
 # 剪贴板与选择
 copy-on-select = clipboard

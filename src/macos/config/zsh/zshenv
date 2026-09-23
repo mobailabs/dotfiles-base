@@ -67,10 +67,10 @@ export PATH
 # 那是给非交互 / 子进程场景用的共享实现；两者判断同一批路径。
 #
 # 以前这套「先 /opt/homebrew 再 /usr/local」的判断在 4 个地方各写了一遍
-# （zprofile、zshrc、brew-bootstrap.zsh、ghostty/start-tmux.sh），
+# （zprofile、zshrc、brew-bootstrap.zsh、ghostty 的 GUI 启动脚本），
 # 加一台新路径的机器就要改 4 处、漏一处就静默失效。
-# 现在收敛成：本文件（交互 shell）+ brew-env.zsh（脚本）+ 两个必须例外的
-# （brew-bootstrap 安装期、start-tmux GUI 上下文）。
+# 现在收敛成：本文件（交互 shell）+ brew-env.zsh（脚本）+ 一个必须例外的
+# （brew-bootstrap 安装期鸡生蛋）。
 #
 # 做的事和 `brew shellenv` 一样：设 HOMEBREW_* 并把 bin 加到 PATH。
 # 不直接 eval `brew shellenv` 是因为它在非交互 shell 里会拖慢启动，

@@ -9,9 +9,7 @@
 # 它引用的 helper 本身也得先找到 brew。
 # 所以这里保留一份最小探测。装完 brew 后，后续步骤一律走 brew-env.zsh。
 #
-# 另一处不经过 brew-env 的是 src/macos/config/ghostty/start-tmux.sh ——
-# 那是 Ghostty 从 launchd 启动的 GUI 上下文，不经过任何 shell 启动文件。
-# （.zshenv 里也有一份，那是给普通交互 shell 用的；它只设路径不执行 brew 命令。）
+# （.zshenv 里也有一份，那是给交互 shell 用的；它只设路径、不执行 brew 命令。）
 
 set -uo pipefail
 
