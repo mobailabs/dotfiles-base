@@ -10,7 +10,7 @@
 
 ## 为什么要有这份契约
 
-现在的情况：公开仓库有四个 `.local` 加载点（见 `README.md` 的「加载点」），
+现在的情况：公开仓库有几个 `.local` 加载点（见 `README.md` 的「加载点」），
 但它们全是**条件加载、缺失静默跳过**：
 
 ```sh
@@ -92,19 +92,54 @@ macview 直接读，不猜。
   },
 
   // 五个落点，每个一条。数组有序，展示顺序即此顺序。
-  // id 与 macview 的 declaredSlots 对齐（Diff/LoadPoint.swift）：
-  //   aliases / zshrc-local / envconfig-local / git-local / ssh-local
+  // id / name / source_rel / target / loaded_by 的完整取值见
+  // 上面「五个槽位的完整映射」表 —— 实现时照抄，不要自己猜。
   "slots": [
     {
-      "id": "zshrc-local",
-      "name": "常用目录",                  // 展示名，与 macview 的 Slot.name 一致
-      "source_rel": "zshrc.local",        // 源内相对路径；据此判断「源声明了这一项吗」
-      "target": "/Users/you/.zshrc.local",  // 绝对路径（读取方直接用，不做 ~ 展开）
-      "loaded_by": "/Users/you/.zshrc",     // 谁来读它（帮助用户理解）
+      "id": "aliases",
+      "name": "别名",
+      "source_rel": "aliases",
+      "target": "/Users/you/.aliases",
+      "loaded_by": "/Users/you/.zshrc",
       "status": "absent",              // ok | absent | incomplete | placeholder
-      "effect": null                   // status=ok 时才有意义，见下
+      "effect": null                   // 仅 status=ok 时非 null，见下
+    },
+    {
+      "id": "zshrc-local",
+      "name": "常用目录",
+      "source_rel": "zshrc.local",
+      "target": "/Users/you/.zshrc.local",
+      "loaded_by": "/Users/you/.zshrc",
+      "status": "absent",
+      "effect": null
+    },
+    {
+      "id": "envconfig-local",
+      "name": "环境变量 · 服务 · 代理",
+      "source_rel": "envconfig.local",
+      "target": "/Users/you/.envconfig.local",
+      "loaded_by": "/Users/you/.envconfig",
+      "status": "absent",
+      "effect": null
+    },
+    {
+      "id": "git-local",
+      "name": "git",
+      "source_rel": "gitconfig.local",
+      "target": "/Users/you/.gitconfig.local",
+      "loaded_by": "/Users/you/.gitconfig",
+      "status": "absent",
+      "effect": null
+    },
+    {
+      "id": "ssh-local",
+      "name": "ssh",
+      "source_rel": "ssh/config.local",
+      "target": "/Users/you/.ssh/config.local",
+      "loaded_by": "/Users/you/.ssh/config",
+      "status": "absent",
+      "effect": null
     }
-    // …aliases / envconfig-local / git-local / ssh-local，共五条
   ]
 }
 ```
@@ -145,8 +180,26 @@ macview 的 `SlotState` 里有个 `unchecked(why:)` —— **那正是它承认�
 ```
 
 - 本契约的 `source.path` 填**这个约定解析出的绝对路径**，不另立名字。
-- 私有源里各文件的位置就是 `source_rel`：`zshrc.local`、`gitconfig.local`、
-  `envconfig.local`、`ssh/config.local`、`aliases`。
+
+### 五个槽位的完整映射（实现时照抄，不要自己猜）
+
+`source_rel` 是**源里的相对路径**；`target` / `loaded_by` 是 `$HOME` 下的
+**绝对路径**（下表用 `~/` 示意，产出时展开）。
+
+| `id` | `name` | `source_rel`（源内） | `target`（落点） | `loaded_by`（谁读） |
+|---|---|---|---|---|
+| `aliases` | 别名 | `aliases` | `~/.aliases` | `~/.zshrc` |
+| `zshrc-local` | 常用目录 | `zshrc.local` | `~/.zshrc.local` | `~/.zshrc` |
+| `envconfig-local` | 环境变量 · 服务 · 代理 | `envconfig.local` | `~/.envconfig.local` | `~/.envconfig` |
+| `git-local` | git | `gitconfig.local` | `~/.gitconfig.local` | `~/.gitconfig`（`[include]`） |
+| `ssh-local` | ssh | `ssh/config.local` | `~/.ssh/config.local` | `~/.ssh/config`（`Include`） |
+
+> `aliases` 的源内文件名**没有 `.local` 后缀** —— 这是刻意的：它落到的
+> `target` 本来就叫 `~/.aliases`，源里跟它同名即可，不要自作主张改成
+> `aliases.local`。其它四个带 `.local`，是因为它们的 `target` 带 `.local`。
+> **规则一句话：源内名 = `target` 的 basename。**（`ssh-local` 例外，
+> 它多一层 `ssh/` 目录。）
+
 
 ### 状态文件为什么放在 `~/.config/dotfiles/`
 
@@ -228,26 +281,59 @@ macview 现有的三个 JSON 全在 `~/Library/Application Support/macview/`，
 
 | status | 含义 | macview 该显示成 |
 |---|---|---|
-| `ok` | target 在，且**效果**验证通过 | ✅ 正常 |
+| `ok` | target 在，且**效果**验证通过（`effect` 能取到值） | ✅ 正常 |
 | `absent` | **源里没这一项**（`source_rel` 不存在） | ⚪ 可选（不是错误） |
-| `incomplete` | 源里**有**，但没落到 target（链接断 / 复制失败 / 权限不对） | 🔴 这是 bug，要修 |
+| `incomplete` | 源里**有**，但没落到 target；**或源整体没拿到** | 🔴 这是 bug，要修 |
 | `placeholder` | 源里那份还是模板值（有哨兵） | 🟡 提醒用户去填 |
+
+**检测的是「源」还是「target」—— 这是本契约最容易写错的地方，先记住：**
+
+| 判定依据 | 读哪个文件 | 为什么 |
+|---|---|---|
+| 源里有没有这一项（`source_rel`） | **源** | 源的属性 |
+| 内容是模板还是真值（哨兵） | **源** | 模板是源里的东西，`target` 是复制品时未必一样 |
+| **`effect` 取到的值** | **`target`** | `ok` 要证明的是「**落到 `$HOME` 的这份真的生效了**」——源改好了但没链过去，不算 `ok` |
+
+> 一句话：**「源里有没有」看源，「生效了吗」看 target。**
+> 所以判定表第 4/5 行的 `effect`，读的是 `target` 文件（`~/.gitconfig.local` 等），
+> 不是源里那份。否则「没链接」会被判成 `ok` —— 正好漏掉最该报的那个 bug。
 
 判定表（检测器**按从上到下的顺序**判，先命中先定，无歧义）：
 
-| # | 源里有 `source_rel` 吗 | 源文件有哨兵吗 | target 在吗 | 内容有效吗 | status |
-|---|---|---|---|---|---|
-| 1 | 否 | — | — | — | `absent` |
-| 2 | 是 | **有** | — | — | `placeholder` |
-| 3 | 是 | 无 | 否 | — | `incomplete` |
-| 4 | 是 | 无 | 是 | 有效 | `ok` |
-| 5 | 是 | 无 | 是 | 无效 | `incomplete` |
+| # | 源拿到了吗 | 源里有 `source_rel` 吗 | 源文件有哨兵吗 | target 在吗 | `effect` 能取到值吗 | status |
+|---|---|---|---|---|---|---|
+| 0 | **否**（`present=false`） | — | — | — | — | **源级失败，见下** |
+| 1 | 是 | 否 | — | — | — | `absent` |
+| 2 | 是 | 是 | **有** | — | — | `placeholder` |
+| 3 | 是 | 是 | 无 | **否** | — | `incomplete` |
+| 4 | 是 | 是 | 无 | 是 | 能（至少一个非空值） | `ok` |
+| 5 | 是 | 是 | 无 | 是 | 不能（全空 / 解析失败） | `incomplete` |
+
+- **第 0 行（源没拿到）优先于一切。** `source.present = false` 时，
+  检测器**无法判断**任何一个槽位「源里到底有没有」—— 因为源根本不在本地。
+  所以**不能**把它们判成 `absent`（那会谎报成「用户没配这项」）。
+
+  `present = false` 时，所有 slot 的 `status` 填 **`incomplete`**，
+  并且 `source.detail` 写明原因（如 `git clone 失败：Repository not found`）。
+  这样 macview 一看就知道「源整体没拿到」，而不是「五项都没配」。
 
 - **第 2 行优先于第 3 行**：源里那份还是模板 → 不管有没有链过去，都是
   `placeholder`。这样「复制了模板但还没链接」不会被误报成 `incomplete`
   （那会显得像 bug，实际只是还没填）。
-- **第 5 行**：target 在但内容无效（少了关键键、解析失败）也算 `incomplete`
-  —— 也算「没弄好」。
+
+- **第 3 行：target 不存在就到此为止，不再往后判。** 顺序是「**先看 target 在不在，
+  在才去取 `effect`**」—— 不能先取 `effect` 再拿结果当判据：`effect` 是从
+  `target` 读的，target 不在时它天然取不到值，先取就会把「没链接」和
+  「链接了但内容空」**压成同一个 `incomplete`**，丢掉信息。两条判定各有各的
+  含义，不要合并。
+
+- **第 4/5 行**：`target` 在，才去**从 target** 取 `effect`。
+  「取到至少一个非空值」就是 `ok`，取不到就是 `incomplete`（内容空 / 解析失败）。
+  这是 `ok` 与 `incomplete` 的**唯一分界**，不需要另立「有效性」判据。
+
+- **第 2 行与第 3/4/5 行的关系**：哨兵只在**源**里看。
+  源里是模板 → `placeholder`，到此为止，不看 target、不取 `effect`
+  （此时 `effect` 即使能取到也是假值，见「`slots[].effect`」一节）。
 
 **`absent` 和 `incomplete` 的区别是这份契约存在的全部理由。**
 
@@ -260,11 +346,24 @@ macview 现有的三个 JSON 全在 `~/Library/Application Support/macview/`，
 **没有单独的 status 值。** 它就是 `source.kind == "none"` + **所有 slot 都是 `absent`**。
 
 不把「没配源」塞进某个 slot 的 status，因为它是**源级**的事实，不是槽位级的事实。
-macview 的判断规则（一条）：
+
+**注意与「配了但没拉下来」的区别** —— 后者是 `kind = "git"` 且
+`present = false`，此时 slot 全是 `incomplete`（见判定表第 0 行），
+**不会**满足下面这条规则。两者不会混淆：
+
+| 情况 | `source.kind` | `source.present` | 所有 slot | macview 显示 |
+|---|---|---|---|---|
+| 没配私有源 | `none` | `false` | 全 `absent` | 「还没设置私有源（可选）」 |
+| 配了但没拉下来 | `git` / `dir` | `false` | 全 `incomplete` | 「私有源拿不到」+ `source.detail` |
+| 配了、拉下来了 | `git` / `dir` | `true` | 按判定表 | 逐项显示 |
+
+macview 的判断规则：
 
 ```
-if source.kind == "none"  → 显示「还没设置私有源（可选）」+ 引导
-elif 存在 status == "incomplete" → 显示为 bug
+if source.kind == "none" and 所有 slot == absent  → 「还没设置私有源（可选）」+ 引导
+elif source.present == false                      → 「私有源拿不到」+ 显示 source.detail
+elif 存在 status == "incomplete"                  → 显示为 bug
+elif 存在 status == "placeholder"                 → 提醒去填
 ...
 ```
 
@@ -296,8 +395,10 @@ elif 存在 status == "incomplete" → 显示为 bug
 
 | 源文件里有哨兵吗 | status |
 |---|---|
-| 有 | `placeholder`（此时**不看** target —— 源是模板，见上表的第 2 行） |
-| 无 | 继续按判定表走（`incomplete` / `ok`） |
+| 有 | `placeholder`（**只看源**：不管 target 在不在、内容如何，到此为止） |
+| 无 | 继续按判定表走 —— **此时才去看 target**（`incomplete` / `ok`） |
+
+> 两个问题读两个不同的文件，别混：**哨兵看源，生效看 target**。
 
 **为什么用哨兵，而不是匹配 `Your Name` / `your@email.com` 这类已知占位串：**
 
@@ -326,7 +427,32 @@ elif 存在 status == "incomplete" → 显示为 bug
 
 ### `slots[].effect`：验证「真的生效了吗」
 
-`status = ok` 时填一个**实际解析出来的值**，而不是「文件存在」。
+**`effect` 只在 `status = ok` 时非 null。** 其它三个状态（`absent` /
+`incomplete` / `placeholder`）一律填 `null`：
+
+| status | `effect` |
+|---|---|
+| `ok` | 对象，至少一个非空值 |
+| `absent` / `incomplete` / `placeholder` | `null` |
+
+> 为什么 `placeholder` 也是 `null`：源里那份还是模板，探针取到的值没有意义
+> （取到的会是 `your@email.com` 这种假值）。填了反而误导 macview
+> 「看起来有值」。**没填好就是没填好，不给部分结果。**
+
+**`effect` 从 `target` 取，不从源取。** 理由：`ok` 的含义是「**落到 `$HOME` 的
+那份真的生效了**」。源改好了、但没链过去（或链的是旧副本），不算 `ok`。
+从源取值会把这种情况判成 `ok`，正好漏掉最该报的 bug。
+
+**`effect` 也是判定 `ok` / `incomplete` 的唯一依据** —— 见判定表第 4/5 行：
+
+> 「`effect` 能取到至少一个非空值」 ⇔ `ok`
+> 「取不到（全空 / 解析失败）」 ⇔ `incomplete`
+
+所以检测器**不需要**另写一套「内容有效性」判据 —— `effect` 能不能产出，
+就是那个判据。这两个东西是同一件事，不要实现成两套。
+
+> 注意判定顺序：**先确认 target 在，才去取 `effect`**（判定表第 3 行在前）。
+> 顺序反了会把「没链接」和「链接了但内容空」压成同一个 `incomplete`。
 
 **`effect` 的约定（这是硬约定，不是示意）：**
 
@@ -352,8 +478,8 @@ elif 存在 status == "incomplete" → 显示为 bug
   需要表达列表时用**分隔字符串**（如上面的 `hosts`）。
 - **不要放统计量**（如「导出了几个变量」）—— 那是健康度指标，不是「配置生效」
   的证据，塞进来会让读取方无法统一渲染。要统计量就另开字段（当前不需要）。
-- **键必须是可验证的** —— 检测器要能真的跑出这个值来。填不出来的槽位
-  `effect` 保持 `null`。
+- **键必须是可验证的** —— 检测器要能真的跑出这个值来。跑不出来的槽位
+  就是 `incomplete`（`effect` 为 `null`），不会是 `ok`。
 
 为什么要这样：研究里 chezmoi 的 `verify` 和 sops-nix 的求值期校验都说明 ——
 **「文件存在」不等于「配置生效」**。占位邮箱的文件是存在的，但 commit 出来是错的。
@@ -361,18 +487,7 @@ elif 存在 status == "incomplete" → 显示为 bug
 ### `loaded_by`：target 还没链接时填什么
 
 `loaded_by` 是**静态约定**，不是运行时事实 —— 它表达「这一项设计上由谁读」，
-和当前有没有链接成功**无关**。
-
-```
-aliases          →  loaded_by: 绝对路径的 ~/.zshrc        （例 /Users/you/.zshrc）
-zshrc-local      →  loaded_by: 绝对路径的 ~/.zshrc
-envconfig-local  →  loaded_by: 绝对路径的 ~/.envconfig
-git-local        →  loaded_by: 绝对路径的 ~/.gitconfig     （通过 [include]）
-ssh-local        →  loaded_by: 绝对路径的 ~/.ssh/config    （通过 Include）
-```
-
-（这里 `绝对路径的 ~/…` 是**说明**，不是字面量 —— 产出时必须展开成
-`/Users/you/.zshrc` 这种真实绝对路径。）
+和当前有没有链接成功**无关**。取值见上面「五个槽位的完整映射」表。
 
 理由：
 
@@ -380,7 +495,7 @@ ssh-local        →  loaded_by: 绝对路径的 ~/.ssh/config    （通过 Incl
   即使这一项是 `absent` / `incomplete`，这个解释**依然成立**、依然有用。
 - 如果「没链接时留 null」，macview 就得为每个状态分支处理 `loaded_by` 的
   空值，而它本来是个常量 —— 徒增复杂度。
-- `<HOME>` 部分用**绝对路径**（同 `target` 的约定，读取方不展开 `~`）。
+- `loaded_by` 用**绝对路径**（同 `target` 的约定，读取方不展开 `~`）。
 
 > 一句话：`loaded_by` 描述**设计**，`status` 描述**现状**。两者互不影响。
 
@@ -468,11 +583,13 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 2. 文件**不存在 / 无 `version` / `version` 高于已知** → 显示「还没检测过」或
    「请升级 macview」，**不要**当成「没配私有源」
 3. **`source.kind == "none"` 且所有 slot 为 `absent`** → 「还没设置私有源（可选）」
-4. 按 `slots[].status` 做**四态**渲染（见上表）；`incomplete` 标成 bug
-5. `source.kind = cloud` 时走服务的 UI（将来）
-6. **不要自己推断** —— 有契约就信契约，没契约就显示「未知」
-7. `slots[].id` 与它的 `declaredSlots` 对齐，**直接按 id 关联**，不维护映射表
-8. 它现有的 `SlotState`（宿主文件里有没有加载行）**继续保留**，与本契约的
+4. **`source.present == false`（但 `kind != none`）** → 「私有源拿不到」，
+   并列显示 `source.detail`；此时 slot 都是 `incomplete`，**不要**当 bug 逐条报
+5. 按 `slots[].status` 做**四态**渲染（见上表）；`incomplete` 标成 bug
+6. `source.kind = cloud` 时走服务的 UI（将来）
+7. **不要自己推断** —— 有契约就信契约，没契约就显示「未知」
+8. `slots[].id` 与它的 `declaredSlots` 对齐，**直接按 id 关联**，不维护映射表
+9. 它现有的 `SlotState`（宿主文件里有没有加载行）**继续保留**，与本契约的
    `status`（落点文件状态）**并排展示**，两者互补不冲突
 
 ---
@@ -503,6 +620,19 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 - [x] `loaded_by` 是**静态约定**（设计上谁读），target 没链接时**照常填**，
       不留 null
 - [x] `generated_by` **不带版本号**，就写脚本名，只供排查、不参与逻辑
+- [x] 「内容有效」= **`effect` 能取到至少一个非空值**；`ok`/`incomplete` 的
+      分界就是它，不另写一套有效性判据
+- [x] `source.present == false`（配了源但没拉下来）→ 所有 slot 填
+      **`incomplete`** + `source.detail`，**不得**报 `absent`（那会谎报成没配）
+- [x] `aliases` 的源内文件名**就叫 `aliases`**（无 `.local`）——
+      规则：源内名 = target 的 basename（`ssh-local` 例外，多一层目录）
+- [x] `effect` 仅在 `status=ok` 时非 null；其它三态一律 `null`
+- [x] 五个槽位的 `source_rel` / `target` / `loaded_by` **在文档里列全**，
+      实现照抄不用猜
+- [x] **检测对象分流**：`source_rel` / 哨兵读**源**；`effect` 读 **`target`**
+      （`ok` = 「落到 `$HOME` 的那份生效了」，源对了但没链过去不算）
+- [x] 判定顺序**先看 target 在不在，再取 `effect`**；两条判定不可合并
+      （合并会把「没链接」和「链接了但内容空」压成同一个 `incomplete`）
 
 ### 尚未决定
 
