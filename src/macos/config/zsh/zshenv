@@ -34,7 +34,7 @@ typeset -U path  # 确保 PATH 中的路径不重复
 # 用 `path+=(...)` 追加到末尾会把优先级降到最低，结果是你自己装的 CLI
 # 被系统里的同名命令遮住。所以下面用 _pre 攒好再整体前置。
 #
-# 私有仓库的 bin 不在这里处理：`~/.zshrc.local` 里已经用
+# 私有源的 bin 不在这里处理：`~/.zshrc.local` 里已经用
 # `$DOTFILES_PRIVATE_ROOT/bin` 条件加过了，那才是它的归属。
 _pre=()
 [[ -d "$HOME/.bin" ]] && _pre+=("$HOME/.bin")

@@ -16,8 +16,12 @@
 配置改在这里，机器上的改动才有归宿。
 
 **不是**：某台机器的快照。机器专属的东西（Git 身份、SSH Host、token、公司内网变量）
-不进这个仓库 —— 它们属于**私有仓库**（单独一个 git 仓库，不在本仓库内），
-通过三个 `.local` 落点被这里的加载点读进来。
+不进这个仓库 —— 它们属于**私有源**（用户自己的数据，可以是私有 git 仓库、
+普通目录，将来也可以是 macview 的云服务），通过几个 `.local` 落点被这里的
+加载点读进来。**没有私有源也完全能跑** —— 加载点全是条件加载，缺了就跳过。
+
+「公开仓库 / 私有源」之间的接口（谁读谁、怎么判断装没装好）见
+**[`private.md`](private.md)** —— 那也是 macview 读的状态契约。
 
 ---
 
@@ -47,9 +51,10 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 `--yes` 表示不提问，全部从参数 / 环境变量 / 已有配置取值；取不到就跳过
 （不阻断其它步骤）。
 
-机器专属的东西（Git 身份 / SSH / token）另外放在一个私有仓库里，通过三个
-`.local` 落点被加载（见下面「加载点」）。**没有这个私有仓库也不会报错** ——
-加载点全是条件加载，缺了就静默跳过。所以「私有仓库在不在」是 macview 要提醒你的事。
+机器专属的东西（Git 身份 / SSH / token）另外放在一个**私有源**里，通过几个
+`.local` 落点被加载（见下面「加载点」，接口定义见 [`private.md`](private.md)）。
+**没有私有源也不会报错** —— 加载点全是条件加载，缺了就静默跳过。
+所以「私有源在不在、装全了没有」是 macview 要告诉你的事。
 
 ### install.zsh 做了什么
 
@@ -90,6 +95,7 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ├── install.zsh              ← 入口（macOS）
 ├── README.md                ← 本文件：装什么、怎么装、改哪里
 ├── shell.md                 ← shell 加载链的完整说明（PATH/环境变量/别名/函数）
+├── private.md               ← 公开仓库↔私有源的接口契约（macview 读的状态格式）
 ├── packages/                ← 要装什么
 │   ├── common/brew-cli.txt
 │   └── macos/{brew-cli,brew-cask}.txt
@@ -160,9 +166,9 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 | 改开头那几个提问 | `scripts/common/prompt-once.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/common/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
-| 加一个机器专属的东西 | 私有仓库，**不是这里** |
+| 加一个机器专属的东西 | 私有源，**不是这里**（接口见 `private.md`） |
 
-判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有仓库。**
+判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有源。**
 
 ---
 
@@ -195,6 +201,10 @@ DOTFILE_LINKS=(
 
 它读的就是这个仓库 —— `packages/*.txt`、`scripts/macos/prefs.d/*.zsh`
 都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
+
+**私有源**这一块，两边靠 [`private.md`](private.md) 定义的状态契约交接：
+macview 读 `~/.config/dotfiles/private-state.json`，就能区分「没有私有源」
+（正常）和「有但没装好」（要修）。契约格式已定，两侧实现都还没做。
 
 落点清单是**两边各维护一份**：`link-dotfiles.zsh` 的 `DOTFILE_LINKS` 是命令行版
 依据，macview 自己另存一份。两边可能漂移，但漂移**可检测** —— 仓库里有源、
@@ -247,4 +257,4 @@ Include ~/.ssh/config.local
 | git 身份 | ✅ | 开头问一次，或用 `--name/--email`、环境变量 |
 | ssh `Include` | ✅ | 自动插入 |
 | **sudo 密码本身** | ❌ | 只能开头输一次；无法凭空获得 |
-| **私有仓库 / token** | ❌ | 不在本仓库，需自己去 clone
+| **私有源 / token** | ❌ | 不在本仓库，需用户自备（可以是私有 git 仓库 / 目录，将来可接 macview 云服务；见 `private.md`）

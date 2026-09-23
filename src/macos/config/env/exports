@@ -6,7 +6,7 @@
 # 由 ~/.zshrc 加载（`[[ -f ~/.exports ]] && source ~/.exports`）。
 #
 # 这里只放**可以在公共仓库里出现**的导出变量。
-# 机器专属 / 含 token 的导出变量请放 ~/.zshrc.local（私有仓库）。
+# 机器专属 / 含 token 的导出变量请放 ~/.zshrc.local（私有源；接口见 private.md）。
 #
 # 历史原因：这个文件曾经缺失，但 ~/.zshrc 一直在 source 它 ——
 # 属于「加载了不存在的东西」的悬空加载点。现在补上。

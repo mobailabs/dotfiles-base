@@ -66,9 +66,9 @@ main() {
 
   # label|kind|path —— 与 macview 的 packageListFiles 对应。
   #
-  # ⚠️ 只覆盖**公共仓库**的 3 份。macview 还会读私有仓库的
-  # `packages/*.private.txt`（它知道私有仓库在哪，本脚本不知道）。
-  # 所以两边在「私有仓库已克隆」时结果会不同 —— 这是已知差异，不是 bug。
+  # ⚠️ 只覆盖**公共仓库**的 3 份。私有源里的 `packages/*.private.txt`
+  # 本脚本读不到（私有源路径不在公开仓库里，见 private.md 的契约）。
+  # 所以两边在「用户配了私有源」时结果会不同 —— 这是已知差异，不是 bug。
   local specs=(
     "公共 / 通用 formulae|formula|$ROOT_DIR/packages/common/brew-cli.txt"
     "公共 / macos formulae|formula|$ROOT_DIR/packages/macos/brew-cli.txt"

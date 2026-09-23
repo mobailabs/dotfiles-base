@@ -135,7 +135,7 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 - 用 `typeset -U path` 去重。
 - `_pre` 是先把要前置的攒好、再整体前置 —— 直接 `path+=(...)` 追加到末尾
   会把优先级降到最低，你自己装的 CLI 会被系统同名命令遮住。
-- 私有仓库的 `bin` 不在这里处理，它在 `~/.zshrc.local` 里（那才是它的归属）。
+- 私有源的 `bin` 不在这里处理，它在 `~/.zshrc.local` 里（那才是它的归属）。
 
 ---
 
@@ -227,8 +227,8 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 | 文件 | 用途 | 加载点 | 谁创建 |
 |---|---|---|---|
 | `~/.gitconfig.local` | 机器专属 / 含 token | `gitconfig` 的 `[include]` | `install.zsh` 开头问一次（或 `--name/--email`） |
-| `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 | 你自己 / 私有仓库 |
-| `~/.envconfig.local` | 私有环境变量 | `env/envconfig` | 你自己 / 私有仓库 |
+| `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 | 你自己 / 私有源 |
+| `~/.envconfig.local` | 私有环境变量 | `env/envconfig` | 你自己 / 私有源 |
 
 `~/.gitconfig.local` 在 `install.zsh` 跑的时候会被自动写好。给
 `install.zsh` 传 `--name/--email`（或 `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`
