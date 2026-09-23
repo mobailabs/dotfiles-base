@@ -166,10 +166,14 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 
 ## 本机私有配置（不进仓库）
 
-| 文件 | 用途 | 加载点 |
-|---|---|---|
-| `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 |
-| `~/.envconfig.local` | 私有环境变量 | `env/envconfig` |
+| 文件 | 用途 | 加载点 | 谁创建 |
+|---|---|---|---|
+| `~/.gitconfig.local` | 机器专属 / 含 token | `gitconfig` 的 `[include]` | `install.zsh` 开头问一次（或 `--name/--email`） |
+| `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 | 你自己 / 私有仓库 |
+| `~/.envconfig.local` | 私有环境变量 | `env/envconfig` | 你自己 / 私有仓库 |
+
+`~/.gitconfig.local` 在 `install.zsh` 跑的时候会被自动写好（见 `shell.md`
+顶部「一条命令」）。给 `install.zsh` 传 `--name/--email` 就完全不问。
 
 **加私有文件时，必须同时在标准文件里加加载点。** 只加一半等于没加 ——
 文件会被创建、但没人读，而且不报错。这是这个仓库最容易踩的坑，

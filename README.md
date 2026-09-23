@@ -21,20 +21,52 @@
 
 ---
 
-## 新机器：两步
+## 新机器：一条命令
 
 ```sh
 # 1. 克隆（路径随意，脚本按自身位置定位，不依赖固定目录）
 git clone <this-repo> ~/dotfiles
 cd ~/dotfiles
 
-# 2. 装
-zsh install.zsh              # 全部：check → brew → 插件 → 链接 → mise → 系统偏好
+# 2. 装（全部：check → 身份/权限 → brew → 插件 → 链接 → mise → 系统偏好）
+zsh install.zsh
 ```
+
+**它只在开头问你一次**（git 名字/邮箱 + 管理员密码），之后全程零交互 ——
+你可以敲完然后走开。脚本无法自动猜的东西都集中在这一步问完，
+不会装到一半突然卡在某个提示上。
+
+想完全零交互（CI / 远程）：
+
+```sh
+zsh install.zsh --name "你的名字" --email "you@example.com"
+# 或者
+GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
+```
+
+`--yes` 表示不提问，全部从参数 / 环境变量 / 已有配置取值；取不到就跳过
+（不阻断其它步骤）。
 
 机器专属的东西（Git 身份 / SSH / token）另外放在一个私有仓库里，通过三个
 `.local` 落点被加载（见下面「加载点」）。**没有这个私有仓库也不会报错** ——
 加载点全是条件加载，缺了就静默跳过。所以「私有仓库在不在」是 macview 要提醒你的事。
+
+### install.zsh 做了什么
+
+| 步骤 | 内容 |
+|---|---|
+| check | 预检（macOS / git / 网络），唯一会硬性中止的一步 |
+| **一次性设置** | git 身份写 `~/.gitconfig.local`、`sudo -v` 预授权、ssh `Include` 自动加 |
+| Homebrew + 包 | 没 brew 就用 `NONINTERACTIVE=1` 自动装，再装 `packages/*/brew-*.txt` |
+| oh-my-zsh / zsh 插件 | 装 `~/.oh-my-zsh` 与 brew 里没有的插件 |
+| 链接配置 | 19 个落点链到 `$HOME` |
+| tmux 插件 / mise | TPM 及插件；按 `mise/config.toml` 装工具 |
+| macOS 偏好 | 9 个 `prefs.d`（sudo 已在开头预授权，不会再问） |
+
+**单步失败不会中断**：每步独立容错，最后汇总失败项并以非 0 退出。
+所以就算某个 cask 装不上，配置链接和系统偏好照样完成。
+
+装完还有两件「需要重启才生效」：**新开一个终端**、部分 App 要重启。
 
 `install.zsh` 还可以单独跑某一步：
 
@@ -61,7 +93,8 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
 │   ├── common/              ← brew / 插件 / 链接 / mise / 对账
-│   │   └── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
+│   │   ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
+│   │   └── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
 │   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
 │   ├── zsh/  env/  shell/   ← .zshenv/.zshrc/别名/函数/导出变量
@@ -118,6 +151,7 @@ zsh install.zsh              # 全部：check → brew → 插件 → 链接 →
 | 加一个要装的软件 | `packages/{common,macos}/brew-*.txt` |
 | 改 shell 别名 | `src/macos/config/aliases`（一行别名）/ `src/macos/config/shell/funcs`（函数） |
 | 改系统偏好 | `scripts/macos/prefs.d/*.zsh` |
+| 改开头那几个提问 | `scripts/common/prompt-once.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/common/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
 | 加一个机器专属的东西 | 私有仓库，**不是这里** |
@@ -177,13 +211,34 @@ DOTFILE_LINKS=(
 
 ---
 
-## 需要手动做的一件事
+## 之前需要手动、现在已自动
 
 `~/.ssh/config` 是本机的私密文件（由 git-secret 管），不在这个仓库里。
-它需要**手动加一行**，`~/.ssh/config.local` 才会生效：
+它需要一行 `Include ~/.ssh/config.local`，`~/.ssh/config.local` 才会生效。
+
+**这一行现在由 `prompt-once.zsh` 自动加**（插到最上面、幂等、保留原权限）。
+以前是 README 里的一步手动操作 —— 忘了就静默不生效，是最隐蔽的坑之一。
+
+同理，`~/.gitconfig.local`（git 身份）现在也会在 `install.zsh` 开头问你并写好，
+不再需要事后手建。
 
 ```sshconfig
 Include ~/.ssh/config.local
 ```
 
-放在文件最上面。`Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这行永远安全。
+`Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
+
+---
+
+## 全自动：哪些能自动、哪些不能
+
+| 项 | 自动 | 说明 |
+|---|---|---|
+| brew / 所有 CLI / cask | ✅ | `NONINTERACTIVE=1`；少数 cask 自身仍可能要密码 |
+| 19 个配置落点 | ✅ | |
+| oh-my-zsh / zsh 插件 / tmux 插件 / mise | ✅ | |
+| macOS 偏好 | ✅ | sudo 已在开头预授权并后台保持 |
+| git 身份 | ✅ | 开头问一次，或用 `--name/--email`、环境变量 |
+| ssh `Include` | ✅ | 自动插入 |
+| **sudo 密码本身** | ❌ | 只能开头输一次；无法凭空获得 |
+| **私有仓库 / token** | ❌ | 不在本仓库，需自己去 clone

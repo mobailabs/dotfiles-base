@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   cat <<EOF
-Usage: zsh install.zsh [command]
+Usage: zsh install.zsh [command] [options]
 
 Commands:
   (empty) | base   Run setup: OS check, Homebrew + packages, oh-my-zsh,
@@ -15,6 +15,23 @@ Commands:
   link             Link dotfiles only
   audit            Report declared-but-not-installed brew packages (read-only)
   help             Show this help
+
+Options（用于 base，实现零交互）:
+  --name  <名字>   git 提交名字（跳过交互提问）
+  --email <邮箱>   git 提交邮箱（跳过交互提问）
+  --yes, -y        不提问，全部取参数/环境变量/已有配置
+                   适合脚本化、CI、远程 curl | zsh
+
+## 全自动怎么用
+
+  zsh install.zsh
+    开头**一次性**问完 git 身份 + 管理员密码，之后零交互，人可以走开。
+
+  zsh install.zsh --name "你的名字" --email "you@example.com"
+    完全不提问（sudo 若已预授权则全程无交互）。
+
+  GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
+    纯环境变量驱动。
 
 后续所有定制通过编辑 src/**/config/*、packages/*.txt 完成。
 EOF
@@ -38,6 +55,45 @@ EOF
 # 有失败 → 整体 exit 1（CI 能判断），但**该做的都做过了**。
 _failed_steps=()
 
+# 传给 prompt-once 的参数（--name/--email/--yes）。顶层声明成空数组，
+# 这样 `"${INSTALL_ARGS[@]}"` 在 set -u 下也不会因「未定义」而报错。
+INSTALL_ARGS=()
+
+# 后台刷新 sudo 时间戳的 PID（0 = 没在跑）。
+_SUDO_KEEPALIVE_PID=0
+
+# ── sudo keep-alive ─────────────────────────────────────────────────────
+#
+# 为什么需要：macOS 默认 timestamp_timeout 是 **5 分钟**，而完整 base 流程
+# （装几十个 cask + mise 工具）动辄十几分钟到半小时。只在开头 `sudo -v` 一次
+# 是不够的 —— 时间戳过期后，后面的 prefs（Touch ID for sudo）会**再次弹密码**，
+# 人就守在旁边等着了，「走开」就失败。
+#
+# 所以：每 60 秒 `sudo -n true` 刷一次（-n = 不提问；过了期就静默失败、不卡住）。
+# 全部结束时 kill 掉。用 `sudo -n`（而非 `sudo -v`）保证后台进程**永远不会
+# 弹提示**——它弹了也没人看得到，只会挂住。
+start_sudo_keepalive() {
+  # 没有预授权就不必开（否则只是个空转的循环）
+  sudo -n true 2>/dev/null || return 0
+
+  (
+    while true; do
+      sudo -n true 2>/dev/null || exit 0
+      sleep 60
+    done
+  ) &
+  _SUDO_KEEPALIVE_PID=$!
+  echo "sudo 预授权已保持（后台每 60s 刷新）。"
+}
+
+stop_sudo_keepalive() {
+  if (( _SUDO_KEEPALIVE_PID > 0 )); then
+    kill "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    wait "$_SUDO_KEEPALIVE_PID" 2>/dev/null || true
+    _SUDO_KEEPALIVE_PID=0
+  fi
+}
+
 run_step() {
   local desc="$1"; shift
   echo ""
@@ -60,6 +116,18 @@ run_base() {
   # check 是**唯一**硬前置：它失败说明这台机器根本走不下去
   # （非 macOS / 没 git），继续做只会产生一串无意义的失败。
   "$SCRIPT_DIR/scripts/macos/check.zsh" || exit 1
+
+  # 把所有需要人参与的事情**集中到这里一次问完**（git 身份、sudo 预授权、
+  # ssh include）。之后每一步都是零交互 —— 这样你可以敲一条命令然后走开，
+  # 不用守在旁边等某个 sudo 提示。
+  run_step "一次性设置（身份 / 权限 / ssh）" \
+    "$SCRIPT_DIR/scripts/common/prompt-once.zsh" "${INSTALL_ARGS[@]}"
+
+  # prompt-once 可能刚做了 sudo 预授权。装包动辄十几分钟，而时间戳默认
+  # 5 分钟就过期 —— 开个后台循环持续刷新，否则 prefs 那步会重新弹密码。
+  # 无论中途怎么退出（成功/失败/被 kill）都要收掉这个后台进程。
+  trap 'stop_sudo_keepalive' EXIT INT TERM
+  start_sudo_keepalive
 
   run_step "Homebrew + 包" "$SCRIPT_DIR/scripts/macos/brew-install.zsh"
 
@@ -95,7 +163,32 @@ run_base() {
 }
 
 main() {
-  local cmd="${1:-base}"
+  local cmd="base"
+  INSTALL_ARGS=()
+
+  # 第一个非选项参数是命令；其余 --name/--email/--yes 原样转给 prompt-once。
+  while (( $# > 0 )); do
+    case "$1" in
+      --name|--email)
+        # 带值的选项：连值一起收进 INSTALL_ARGS
+        INSTALL_ARGS+=("$1" "${2:-}")
+        shift 2
+        ;;
+      --yes|-y)
+        INSTALL_ARGS+=("$1")
+        shift
+        ;;
+      -*)
+        echo "Unknown option: $1" >&2
+        usage
+        exit 1
+        ;;
+      *)
+        cmd="$1"
+        shift
+        ;;
+    esac
+  done
 
   case "$cmd" in
     base) run_base ;;

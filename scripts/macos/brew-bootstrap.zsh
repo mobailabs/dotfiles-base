@@ -20,7 +20,11 @@ if command -v brew >/dev/null 2>&1; then
 fi
 
 echo "Homebrew not found, installing..."
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# NONINTERACTIVE=1：install.sh 不提问、不要求按回车确认。
+# 这是「一条命令后走开」的前提 —— 否则会在「Press RETURN to continue」处卡住。
+# sudo 由 prompt-once 预先授权，并由 install.zsh 的后台 keep-alive 持续刷新
+# （默认 5 分钟就过期，装 brew 本身可能更久），所以这里不会再弹密码。
+NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 if [[ -x "/opt/homebrew/bin/brew" ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
