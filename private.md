@@ -91,20 +91,74 @@ macview 直接读，不猜。
     "detail": null           // 与源整体相关的补充说明（失败原因等），见「detail 的语义」
   },
 
-  // 四个落点，每个一条。数组有序，展示顺序即此顺序。
+  // 五个落点，每个一条。数组有序，展示顺序即此顺序。
+  // id 与 macview 的 declaredSlots 对齐（Diff/LoadPoint.swift）：
+  //   aliases / zshrc-local / envconfig-local / git-local / ssh-local
   "slots": [
     {
-      "id": "zshrc",
-      "source_rel": "zshrc.local",     // 源内相对路径；据此判断「源声明了这一项吗」
+      "id": "zshrc-local",
+      "name": "常用目录",                  // 展示名，与 macview 的 Slot.name 一致
+      "source_rel": "zshrc.local",        // 源内相对路径；据此判断「源声明了这一项吗」
       "target": "/Users/you/.zshrc.local",  // 绝对路径（读取方直接用，不做 ~ 展开）
       "loaded_by": "/Users/you/.zshrc",     // 谁来读它（帮助用户理解）
       "status": "absent",              // ok | absent | incomplete | placeholder
       "effect": null                   // status=ok 时才有意义，见下
     }
-    // …gitconfig / envconfig / ssh，共四条
+    // …aliases / envconfig-local / git-local / ssh-local，共五条
   ]
 }
 ```
+
+### 和 macview 既有模型的关系（不冲突，是互补的）
+
+macview 已经有一套 `Slot` / `SlotState`（`Sources/MacViewCore/Diff/LoadPoint.swift`）。
+两套东西**管的不是同一件事**，所以都要保留：
+
+| | macview 的 `SlotState` | 本契约的 `slots[].status` |
+|---|---|---|
+| 回答的问题 | **宿主文件里有没有那一行加载语句？** | **落点文件本身有没有、对不对？** |
+| 例子 | `~/.gitconfig` 里有没有 `[include] path = ~/.gitconfig.local` | `~/.gitconfig.local` 在不在、内容是真是占位 |
+| 现状 | 已实现，`slotPresence()`（LoadPoint.swift:263） | 本契约新增 |
+
+macview 的 `SlotState` 里有个 `unchecked(why:)` —— **那正是它承认自己没查的那一半**。
+本契约补的就是这一半。
+
+所以：
+
+- **slot 的 `id` / `name` 直接复用 macview 的 `declaredSlots`**（不要新造命名）：
+  `aliases` / `zshrc-local` / `envconfig-local` / `git-local` / `ssh-local`
+  —— macview 拿到 `id` 就能和它自己的 `Slot` 对上，不用维护映射表。
+- 本契约的 `status` **不与** `SlotState` 合并。两套状态同时存在，
+  macview 展示时可以并排："加载点：有 / 落点：占位"。
+
+> macview 侧的改动是：新增一个读 `private-state.json` 的入口 + 一个四态 enum。
+> 这是**新增**，不推翻它现有的 `SlotState` 逻辑。
+
+### 私有源放在哪
+
+**路径约定复用 macview 已有的 `PRIVATE_DIR`：**
+
+```
+代码里的读取顺序（macview Diff/Collect.swift:53-59 已有此逻辑）：
+  PRIVATE_DIR 环境变量   ？用它
+  : 默认                 ~/private-dotfiles
+```
+
+- 本契约的 `source.path` 填**这个约定解析出的绝对路径**，不另立名字。
+- 私有源里各文件的位置就是 `source_rel`：`zshrc.local`、`gitconfig.local`、
+  `envconfig.local`、`ssh/config.local`、`aliases`。
+
+### 状态文件为什么放在 `~/.config/dotfiles/`
+
+macview 现有的三个 JSON 全在 `~/Library/Application Support/macview/`，
+它**从不读外部脚本生成的 JSON** —— 所以这个文件是它要新增的一个读点。
+
+即便如此仍放 `~/.config/dotfiles/`，理由：
+
+- 它是 **dotfiles 侧的产物**（由 `private-state.zsh` 生成），不是 macview 的内部状态。
+- 和已有的 `os.zsh` / `ohmyzsh.plugins.zsh` 同目录，语义一致（「dotfiles 放在这」）。
+- 用户不装 macview 时它照样有效（install.zsh 会写），**不把数据绑死在 GUI 上**。
+- macview 哪天卸载了，这个文件还在，命令行侧照常工作。
 
 ### `slots[].source_rel`：契约的核心字段
 
@@ -158,10 +212,13 @@ macview 直接读，不猜。
 | 值 | 含义 | 对应现实 |
 |---|---|---|
 | `none` | 用户没配私有源 | 最常见、完全正常 |
-| `git` | 私有源是一个 git 仓库（当前唯一实现的形态） | `~/dotfiles-local` 之类 |
+| `git` | 私有源是一个 git 仓库（当前唯一实现的形态） | `~/private-dotfiles`（`PRIVATE_DIR` 的默认值） |
 | `dir` | 私有源是一个普通目录（没进 git） | 手动放的 |
 | `cloud` | 私有源由云服务提供（**预留，未实现**） | 将来 macview 的服务 |
 
+> 路径约定见上面「私有源放在哪」—— 复用 macview 的 `PRIVATE_DIR`（默认
+> `~/private-dotfiles`），**不要另立名字**。
+>
 > `cloud` 现在**只占位**。契约里留好它，是为了将来接服务时 macview 不用改格式。
 > 在实现之前，没有代码会产出这个值。
 
@@ -174,16 +231,23 @@ macview 直接读，不猜。
 | `ok` | target 在，且**效果**验证通过 | ✅ 正常 |
 | `absent` | **源里没这一项**（`source_rel` 不存在） | ⚪ 可选（不是错误） |
 | `incomplete` | 源里**有**，但没落到 target（链接断 / 复制失败 / 权限不对） | 🔴 这是 bug，要修 |
-| `placeholder` | target 在，但内容还是占位 / 模板值 | 🟡 提醒用户去填 |
+| `placeholder` | 源里那份还是模板值（有哨兵） | 🟡 提醒用户去填 |
 
-判定表（检测器按下表产出，无歧义）：
+判定表（检测器**按从上到下的顺序**判，先命中先定，无歧义）：
 
-| 源里有 `source_rel` 吗 | target 在吗 | 内容有效吗 | status |
-|---|---|---|---|
-| 否 | — | — | `absent` |
-| 是 | 否 | — | `incomplete` |
-| 是 | 是 | 占位 / 模板值 | `placeholder` |
-| 是 | 是 | 有效 | `ok` |
+| # | 源里有 `source_rel` 吗 | 源文件有哨兵吗 | target 在吗 | 内容有效吗 | status |
+|---|---|---|---|---|---|
+| 1 | 否 | — | — | — | `absent` |
+| 2 | 是 | **有** | — | — | `placeholder` |
+| 3 | 是 | 无 | 否 | — | `incomplete` |
+| 4 | 是 | 无 | 是 | 有效 | `ok` |
+| 5 | 是 | 无 | 是 | 无效 | `incomplete` |
+
+- **第 2 行优先于第 3 行**：源里那份还是模板 → 不管有没有链过去，都是
+  `placeholder`。这样「复制了模板但还没链接」不会被误报成 `incomplete`
+  （那会显得像 bug，实际只是还没填）。
+- **第 5 行**：target 在但内容无效（少了关键键、解析失败）也算 `incomplete`
+  —— 也算「没弄好」。
 
 **`absent` 和 `incomplete` 的区别是这份契约存在的全部理由。**
 
@@ -219,12 +283,21 @@ elif 存在 status == "incomplete" → 显示为 bug
 # dotfiles:placeholder
 ```
 
+**读哪个文件**：读**源里的**那个文件，即 `<source.path>/<source_rel>`；
+**不读** `target`。理由：
+
+- 哨兵是**源模板的属性**，不是落点文件的属性。
+- `target` 是软链接时读它等于读源，但 `target` 是**复制**时就未必 ——
+  依赖 `target` 会让结果随链接方式而变。
+- 有了 `source_rel` 就能直接定位源文件，**不需要 readlink 跟随**，
+  也避免了「target 是悬空链接」时的读取错误。
+
 判定：
 
-| 哨兵在吗 | status |
+| 源文件里有哨兵吗 | status |
 |---|---|
-| 在 | `placeholder` |
-| 不在 | 继续按判定表走（`ok` / `incomplete`） |
+| 有 | `placeholder`（此时**不看** target —— 源是模板，见上表的第 2 行） |
+| 无 | 继续按判定表走（`incomplete` / `ok`） |
 
 **为什么用哨兵，而不是匹配 `Your Name` / `your@email.com` 这类已知占位串：**
 
@@ -262,16 +335,16 @@ elif 存在 status == "incomplete" → 显示为 bug
 > **不需要理解每个键的语义**。
 
 ```jsonc
-// gitconfig 槽位：键就是 git config 的键名
-{ "id": "gitconfig", "status": "ok",
+// git-local 槽位：键就是 git config 的键名
+{ "id": "git-local", "status": "ok",
   "effect": { "user.email": "cole@example.com", "user.name": "cole" } }
 
-// ssh 槽位：私有 host 名，逗号分隔（扁平对象里不放数组）
-{ "id": "ssh", "status": "ok",
+// ssh-local 槽位：私有 host 名，逗号分隔（扁平对象里不放数组）
+{ "id": "ssh-local", "status": "ok",
   "effect": { "hosts": "github-work,internal-git" } }
 
-// zshrc / envconfig 槽位：放一个能证明「真被加载了」的探针值
-{ "id": "zshrc", "status": "ok",
+// zshrc-local / envconfig-local 槽位：放一个能证明「真被加载了」的探针值
+{ "id": "zshrc-local", "status": "ok",
   "effect": { "DOTFILES_PRIVATE_LOADED": "1" } }
 ```
 
@@ -291,10 +364,11 @@ elif 存在 status == "incomplete" → 显示为 bug
 和当前有没有链接成功**无关**。
 
 ```
-zshrc     →  loaded_by: 绝对路径的 ~/.zshrc       （例 /Users/you/.zshrc）
-gitconfig →  loaded_by: 绝对路径的 ~/.gitconfig    （通过 [include]）
-envconfig →  loaded_by: 绝对路径的 ~/.envconfig
-ssh       →  loaded_by: 绝对路径的 ~/.ssh/config   （通过 Include）
+aliases          →  loaded_by: 绝对路径的 ~/.zshrc        （例 /Users/you/.zshrc）
+zshrc-local      →  loaded_by: 绝对路径的 ~/.zshrc
+envconfig-local  →  loaded_by: 绝对路径的 ~/.envconfig
+git-local        →  loaded_by: 绝对路径的 ~/.gitconfig     （通过 [include]）
+ssh-local        →  loaded_by: 绝对路径的 ~/.ssh/config    （通过 Include）
 ```
 
 （这里 `绝对路径的 ~/…` 是**说明**，不是字面量 —— 产出时必须展开成
@@ -329,7 +403,22 @@ ssh       →  loaded_by: 绝对路径的 ~/.ssh/config   （通过 Include）
 
 契约要成立，公开仓库得先满足两个条件：
 
-### 1. SSH 从具名改成 glob
+### 1. SSH 具名 → glob（**暂缓：跨仓库，需两边一起改**）
+
+**这条不能单方面改。** macview 的 `sshIncludePaths()`（LoadPoint.swift:211-225）
+专门解析 `Include config.local`，`declaredSlots` 的 ssh snippet 也写死
+`Include config.local`，`SSHPage` 用 `text.contains("config.local")` 判断。
+**dotfiles 先改，macview 的 ssh 检测会直接失效。**
+
+所以顺序必须是：
+
+1. macview 先支持 glob（`sshIncludePaths` 认 `Include ~/.ssh/conf.d/*`）
+2. dotfiles 再切（`prompt-once` 改写 glob）
+3. 两边都处理老机器的迁移
+
+**在那之前，保持现状**：`Include ~/.ssh/config.local`。
+
+下面记下已完成的可行性验证，实施时直接用。
 
 **现在**（公开仓库点名了私有文件）：
 
@@ -337,7 +426,7 @@ ssh       →  loaded_by: 绝对路径的 ~/.ssh/config   （通过 Include）
 Include ~/.ssh/config.local          # prompt-once.zsh 第 158 行
 ```
 
-**改成**：
+**目标**：
 
 ```
 Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个文件
@@ -367,7 +456,7 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 | `install.zsh` 的 prompt-once 步骤 | `prompt-once.zsh` 调 `private-state.zsh --write` | 全部（此时刚处理完 gitconfig / ssh） |
 | macview 主动检测 | macview 调 `private-state.zsh --stdout` | 全部（只读，不落盘） |
 
-`scripts/common/private-state.zsh` 只做一件事：检查四个槽位 → 输出 / 写入状态。
+`scripts/common/private-state.zsh` 只做一件事：检查**五个**槽位 → 输出 / 写入状态。
 它**不装东西、不改 `$HOME`**（除了 `--write` 时的状态文件本身），
 和 `brew-audit.zsh` 是同一类「只读检测器」。
 
@@ -382,6 +471,9 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 4. 按 `slots[].status` 做**四态**渲染（见上表）；`incomplete` 标成 bug
 5. `source.kind = cloud` 时走服务的 UI（将来）
 6. **不要自己推断** —— 有契约就信契约，没契约就显示「未知」
+7. `slots[].id` 与它的 `declaredSlots` 对齐，**直接按 id 关联**，不维护映射表
+8. 它现有的 `SlotState`（宿主文件里有没有加载行）**继续保留**，与本契约的
+   `status`（落点文件状态）**并排展示**，两者互补不冲突
 
 ---
 
@@ -403,6 +495,11 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
       （那会让 install 变成 macview 的入口，职责混乱）
 - [x] `placeholder` 用**源内注释哨兵** `# dotfiles:placeholder`（文件第一行）
       判定，不做值黑名单匹配 —— 见「`placeholder` 的判定」
+- [x] `placeholder` 读**源文件**（`<source.path>/<source_rel>`），不读 `target`
+- [x] slot 的 `id` / `name` **复用 macview 的 `declaredSlots`**（五个：
+      `aliases` / `zshrc-local` / `envconfig-local` / `git-local` / `ssh-local`）
+- [x] 私有源路径复用 macview 已有的 `PRIVATE_DIR` 约定（默认 `~/private-dotfiles`）
+- [x] SSH 具名 → glob **暂缓**：跨仓库，须 macview 先支持 glob 再切 dotfiles
 - [x] `loaded_by` 是**静态约定**（设计上谁读），target 没链接时**照常填**，
       不留 null
 - [x] `generated_by` **不带版本号**，就写脚本名，只供排查、不参与逻辑
