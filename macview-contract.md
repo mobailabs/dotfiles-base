@@ -56,75 +56,119 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 
 这些是**会改动磁盘**的入口。macview 按按钮 = 调它们。
 
-| macview 的动作 | 调的命令 | tty | 退出码 | 现状 |
+| macview 的动作 | 调的命令 | 要提权? | 退出码 | 现状 |
 |---|---|---|---|---|
-| 一键配置(全套) | `zsh install.zsh` | **要** | 0 / 1 | ✅ 已有 |
-| 只链接配置 | `zsh install.zsh link` | 不要 | 0 | ✅ 已有 |
-| 只应用偏好 | `zsh install.zsh prefs` | **要** | 0 / 1 | ✅ 已有 |
-| 装软件(brew+cask) | `zsh scripts/macos/brew-install.zsh` | **要** | 0 / 1 | ✅ 已有 |
-| 对账(只读) | `zsh install.zsh audit` | 不要 | **0 / 1** | ✅ 已有 |
-| 仓库自检(只读) | `zsh install.zsh check` | 不要 | 0 / 1 | ✅ 已有 |
-| 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 通常不要 | 0 / 1 | ✅ 已有 |
-| 链私有 overlay | **缺** —— 见 §3.4 | 不要 | ? | ❌ 要新增 |
+| 一键配置(全套) | `zsh install.zsh` | **是** | 0 / 1 | ✅ 已有 |
+| 只链接配置 | `zsh install.zsh link` | 否 | 0 | ✅ 已有 |
+| 只应用偏好 | `zsh install.zsh prefs` | **是** | 0 / 1 | ✅ 已有 |
+| 装软件(brew+cask) | `zsh scripts/macos/brew-install.zsh` | **是** | 0 / 1 | ✅ 已有 |
+| 对账(只读) | `zsh install.zsh audit` | 否 | **0 / 1** | ✅ 已有 |
+| 仓库自检(只读) | `zsh install.zsh check` | 否 | 0 / 1 | ✅ 已有 |
+| 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 否 | 0 / 1 | ✅ 已有 |
+| 链私有 overlay | **缺** —— 见 §3.4 | 否 | ? | ❌ 要新增 |
 
 **契约**:上表 ✅ 的命令**以后不改名、不改语义**。
 改了 macview 会报「脚本不在」(启动检测),不会静默。
 
-### 1.1 tty 列 —— 这是执行侧最容易做错的一件事
+### 1.1 「要提权」列 —— 这是执行侧最容易做错的一件事
 
-`prompt-once.zsh:71` 用 `[[ -t 0 ]]` 判断「有没有终端」:
+**这一节是实测的,不是推演的。** 原来的稿子写「macview 给子进程开 PTY」——
+实测证明**那条路在 Swift 里走不通**,所以整节重写了。过程见 §1.1.4。
 
-```zsh
-interactive=1
-[[ -t 0 ]] || interactive=0      # 没有 tty → 完全跳过提问
-```
+#### 1.1.1 分成两件互不相干的事
 
-**macview 用 `Process` 起的子进程默认没有 tty**(fd 0 不是终端)。
-没有 tty 时会发生什么,**取决于命令**:
+旧稿把「没有终端」当成一个笼统的问题,其实它是**两个**:
 
-| 命令 | 没 tty 时的实际行为 | 危害 |
+| 问题 | 谁需要 | 怎么解 |
 |---|---|---|
-| `install.zsh`(base) | prompt-once **静默跳过** git 身份、sudo 预授权 | **身份没配也不说**,之后 commit 全失败 |
-| `install.zsh prefs` | `scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 报「a terminal is required」→ 该步失败 | 报错,但**原因会被淹没**在输出里 |
-| `brew-install.zsh` | 装 Homebrew 要密码 → 无 tty 时失败 | 装不上 |
-| 查询类(`*--json`) | 完全不受影响(它们本来就不提问) | 无 |
+| **A. sudo 要密码** | 装 Homebrew、`prefs` 里的 Touch ID 步骤 | `SUDO_ASKPASS`(原生密码框)——**不需要终端** |
+| **B. 脚本自己要 `read`** | `prompt-once.zsh` 问 git 身份 | **不走 `read`** —— 用 `--name`/`--email` 预填 |
 
-所以规则是:
+分开看就清楚了:**两件事都不需要 PTY。**
 
-> **标了「tty 要」的命令,macview 必须给它在「有控制终端」的上下文里跑。**
+#### 1.1.2 A:sudo 用 `SUDO_ASKPASS`,不是 PTY
 
-macview 侧的实现选择(本次已定,**A**):**给子进程分配 PTY**。
-不是「丢给 Terminal.app」,也不是「不处理」。
+`sudo` 拿密码有三条路:读控制终端(`/dev/tty`)、读 stdin(`-S`)、
+调 `SUDO_ASKPASS` 指向的程序(`-A`)。图形界面没有终端,所以走第三条:
+一个弹 **macOS 原生密码框**的助手(`osascript display dialog … with hidden answer`)。
 
-#### 为什么是 PTY 而不是别的
+⚠️ **一个实测出来的硬事实:没有 tty 时,`sudo` 不会自动去用 `SUDO_ASKPASS`,
+必须显式给 `-A`。**(在 macOS 自带的 sudo 1.9.17p2 上实测:
+同样设了 `SUDO_ASKPASS`、同样无 tty,不给 `-A` 报
+「a terminal is required … configure an askpass helper」,给了 `-A` 才弹。)
 
-| 方案 | 为什么不选 |
+这就决定了「谁需要改」:
+
+| 谁在调 sudo | 它会不会自己加 `-A` | 要谁改 |
+|---|---|---|
+| macview 自己发的 sudo | —— | **macview**(发命令时带 `-A`) |
+| Homebrew 的 `install.sh` | **会**(`execute_sudo` 见 `SUDO_ASKPASS` 非空就加 `-A`) | **不用改** —— 只把 `SUDO_ASKPASS` 放进子进程环境 |
+| **本仓库脚本里的裸 `sudo`**(`scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 等) | **不会** | **本仓库**(见下) |
+
+**最后一行是本仓库要补的洞**:`sudo_touchid.zsh:52/62/64` 那些裸 `sudo`
+在「无 tty + 只有 `SUDO_ASKPASS`」时**会失败**。两条修法:
+
+| 修法 | 代价 |
 |---|---|
-| 直接 `Process` + 继承 stdin | 从 GUI 起时 fd 0 是 `/dev/null`,行为和不指定一样 —— 见下 |
-| 继承 stdin + 不指定 | 旧代码踩过:从终端跑 CLI 时是 tty、从 app 跑时是 `/dev/null`,**同一命令两处行为不同**,表现为「偶尔挂住」,极难查(`SoftwareApply.swift:122` 的注释记着) |
-| `standardInput = /dev/null`(旧代码的做法) | **不挂住,但也不提问** —— 需要密码的步骤直接失败。旧代码只是回避了问题 |
-| 丢给 Terminal.app | 用户能看见,但 macview **看不到输出、拿不到退出码**,「实时显示结果」这条就废了 |
-| **PTY**(选它) | 子进程以为自己在一个真终端里:`[[ -t 0 ]]` 真、`sudo` 能弹密码、macview 又能读全部输出 |
+| 每个裸 `sudo` 改成 `sudo -A` | 改动小、直白。但 `-A` 在「有真终端、没有 `SUDO_ASKPASS`」时会反而失败,要判断 |
+| 脚本读一个 `SUDO` 变量(默认 `sudo`,macview 传 `sudo -A`) | 一处定义、所有调用点统一。要动几个文件 |
 
-#### macview 侧怎么开 PTY(实现要点,给 macview 的实现者)
+**这一版倾向第二条**(统一变量),但**列为待办**,不在这次改动里 ——
+它要动 dotfiles 的脚本,得单独验证。(见 §六。)
 
-macOS 有现成的原语(`/usr/include/util.h`、`sys/ttycom.h`,已在 SDK 里确认):
+> **顺带一提**:`brew-install.zsh` 那条**不用改**。它跑的是 Homebrew 自己的
+> `install.sh`,而那个脚本自己认 `SUDO_ASKPASS`。macview 只要把
+> `SUDO_ASKPASS` 放进环境即可 —— 这正是旧代码做的(`SoftwareApply.swift:864-866`
+> 的 `SudoCredential.env`)。
 
-- `openpty(&master, &slave, ...)` —— 开一对 pty。
-- `posix_spawn` —— **不要用 `forkpty`**。
-  理由:Foundation 的 GUI App 是**多线程**的;`fork()` 之后子进程只能调
-  async-signal-safe 的函数,而 `forkpty` 之后通常要立刻 `exec`,
-  中间那一步在 Swift 里很容易踩到不可 fork 的东西。`posix_spawn` 没有这个约束。
-- 把 `slave` 作为子进程的 stdin/stdout/stderr;`master` 由 macview 读。
-- 子进程要 `setsid()`(或 `posix_spawn` 的 `POSIX_SPAWN_SETSID`)成为会话首进程,
-  再让 pty 成为控制终端(`TIOCSCTTY`)—— 否则 `sudo` 找不到 `/dev/tty`。
-- 读 `master` 时**要处理 `\r\n`**:pty 会把 `\n` 翻译成 `\r\n`,直接显示会出现「每行多一个 ^M」。
-- 用户输入密码时回显关掉了,但 macview 仍要把 master 上的字节**转给用户**看
-  (至少要把密码提示显示出来)。
+#### 1.1.3 B:git 身份用参数预填,不走 `read`
 
-⚠️ **PTY 下没有超时这回事。** 人在输密码,不能掐。所以需要 PTY 的步骤
-**不设自动超时**(或者给一个很长的、以「人在打字」为前提的值 ——
-旧代码用的是 5 分钟,见 `SoftwareApply.swift:275`)。
+`prompt-once.zsh:71` 用 `[[ -t 0 ]]` 判断要不要问 git 身份。macview 起的子进程
+没有 tty → **它会静默跳过提问**,于是 `.gitconfig.local` 不建,**之后 commit 全失败**。
+
+但 `prompt-once.zsh` 本来就支持**不问**:`--name`/`--email` 或环境变量
+`GIT_NAME`/`GIT_EMAIL`(见 `prompt-once.zsh:62-64、22-24`)。
+
+所以 macview **不靠 tty**,而是:
+1. 界面上直接问用户「git 名字/邮箱」,或者读已有的 `~/.gitconfig`;
+2. 把值用 `--name`/`--email` 传给 `zsh install.zsh`。
+
+这样「一键配置」在**完全没有终端**的情况下也能把身份配好。
+(旧代码没有这个问题,因为它**从不跑 `install.zsh`**、只做只读解析。)
+
+#### 1.1.4 为什么不是 PTY(实测记录,免得下次又想走这条)
+
+「给子进程开 PTY」听起来最干净,实测**在 Swift 里做不到**:
+
+1. **Swift 明确禁止 `fork()`** —— 编译期报
+   `'fork()' is unavailable: Please use threads or posix_spawn*()`。
+   而唯一能把 pty 变成**控制终端**的原语是 `login_tty()`,它**必须**在
+   `fork()` 出来的子进程里调。
+2. **`posix_spawn` 没有「exec 前跑代码」的钩子**,所以调不了 `login_tty`。
+3. **`posix_spawn` + `POSIX_SPAWN_SETSID` 拿不到控制终端**。实测:
+   子进程里 `ps -o tpgid,tty` 显示 `TPGID=0`、`TTY=??`;
+   而用 `login_tty` 的对照组是 `TPGID=<pid>`、`TTY=ttysNNN`。
+   `sudo` 因此照样报「a terminal is required」。
+4. 让子进程**自己 open 从端**(`posix_spawn_file_actions_addopen`)也一样 ——
+   实测仍是 `TPGID=0`。macOS 不像某些系统那样「会话首进程 open 一个 tty
+   就自动成为控制终端」。
+5. `script(1)` 能开真 pty,但**会往 stdout 混入自己的 `^D\b\b`**、
+   且 stdin 重定向不直达子进程 —— 不适合拿来抓输出。
+
+**结论**:PTY 这条路的性价比最差(要么加一个 C helper、要么忍 `script` 的脏输出),
+而它对**两个真实需求**都不必要(见 §1.1.1)。
+
+#### 1.1.5 那「实时显示 sudo 密码框」怎么做到
+
+`SUDO_ASKPASS` 弹的是**原生 macOS 对话框**(`osascript`),不是终端里的提示。
+所以「macview 拿不到输出」这个担心**不存在** —— 密码框由 `osascript` 自己弹,
+macview 照常收命令的 stdout/stderr。
+
+⚠️ 但有一点要写死:**`SUDO_ASKPASS` 助手要活到整批操作跑完,不能提前删。**
+macOS 的 sudo 凭据默认 **5 分钟**过期,而装 Homebrew 能跑 **20 分钟**;
+脚本内部还有好几次 sudo。助手提前删了,那些 sudo 会报
+`no tty present and no askpass program specified`。旧代码把这条踩明白过
+(`SoftwareApply.swift:846-855`),照抄即可。
 
 ### 1.2 退出码列 —— 「有缺失」不是「崩了」
 
@@ -402,7 +446,7 @@ macview 写死的东西:
 |---|---|
 | 入口脚本名(`install.zsh` + 子命令) | `install.zsh:325` |
 | 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1) |
-| **每个命令要不要 tty** | 契约 §1 表格的 `tty` 列 |
+| **每个命令要不要提权** | 契约 §1 表格的「要提权」列 |
 | 落点数(19) | `link-dotfiles.zsh:34` 的 `DOTFILE_LINKS` |
 | 私有源 5 个落点/槽位 | `private.md:194` |
 | 包清单路径 | `packages/macos/brew-*.txt` |
@@ -414,12 +458,11 @@ macview 写死的东西:
 |---|---|---|
 | 重命名脚本 | 启动检测报「脚本不在」 | ✅ 会报错 |
 | 改落点(加一行) | 落点查询脚本从 `DOTFILE_LINKS` 读 —— **自动跟上** | ✅ 不漂移 |
-| 改某个命令要不要 tty | 该问密码的步骤静默失败(或凭空挂住) | ❌ **会静默漂移** |
+| 改某个命令要不要提权 | 该弹密码框的没弹(macview 没注入 `SUDO_ASKPASS`)→ sudo 失败 | ❌ **会静默漂移** |
 | 加一个 `prefs.d` 主题 | 不影响(本版不做偏好状态,没有东西可漂) | ✅ 无影响 |
 
-「要不要 tty」那一行是**唯一会静默漂移的地方** —— 所以它必须和
-§1 的表格**同时改**。改了契约不改 macview,macview 会用错的路径跑命令
-(该给 PTY 的没给 → 静默跳过提问)。
+「要不要提权」那一行是**唯一会静默漂移的地方** —— 它必须和 §1 的表格
+**同时改**。改了契约不改 macview,需要密码的步骤会**静默失败**。
 
 ---
 
@@ -451,11 +494,22 @@ macview 写死的东西:
   在本仓库加 `install.zsh restore`,读 `link-dotfiles.zsh` 自己的备份)。
 - **`.envconfig.local` 的归宿**(`docs/design/2026-09-22-dotfiles-整理盘点.md` §3.3
   记的老问题)—— 那是本仓库自己的事,不是 macview 接口。
+- ⚠️ **本仓库脚本里的裸 `sudo` 要认 `SUDO_ASKPASS`**(§1.1.2)—— **待办**。
+  `scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 等,在 macview 那种
+  「无 tty + 只有 `SUDO_ASKPASS`」的环境里**会失败**(因为没给 `-A`)。
+  倾向的做法是脚本读一个 `SUDO` 变量(`sudo` 或 `sudo -A`),
+  但要动几个脚本、得单独验证,所以**不在这次改动里**。
+  在那之前,macview 跑 `prefs` 时 Touch ID 那一步会失败并报出来(不是静默)。
 
 ### 本次新拍板的两条(从「没定」移过来)
 
-- **tty / PTY**(§1.1)—— 已定:macview 给需要终端命令开 **PTY**。
-  `ScriptRunner` 要有 `runCaptured`(无 tty)和 `runInteractive`(PTY)两条路径。
+- **提权(不是 tty)**(§1.1)—— 已定,而且**推翻了原稿的 PTY 方案**:
+  macview 用 **`SUDO_ASKPASS` + 原生密码框**(`osascript display dialog`),
+  **不开 PTY**。git 身份用 `--name`/`--email` 预填,也**不走 `read`**。
+  原 PTY 方案在 Swift 里走不通(禁止 `fork()`,`posix_spawn` 拿不到控制终端),
+  实测记录见 §1.1.4。
+  **后果**:`ScriptRunner` 不再需要两条执行路径的区分,而是**一条** ——
+  跑命令 + 可选注入 `SUDO_ASKPASS` 环境。
 - **commit**(§3.1)—— 已定:macview 自己调 git,但配明确纪律
   (先给人看 diff、push 单独一步、空改动不提交)。这是「只调脚本」定位的
   唯一明写例外。
