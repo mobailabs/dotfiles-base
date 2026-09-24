@@ -1,12 +1,29 @@
-# macOS-specific or "nice-to-have" CLI packages.
-# Shared minimal CLI lives in packages/common/brew-cli.txt.
+# brew formulae（CLI 工具）。仓库只做 macOS，所以不再分 common / macos ——
+# 这两份原先是 packages/common/brew-cli.txt 和 packages/macos/brew-cli.txt，
+# 合并而来，顺序是「核心必需 → 日常增强」。
 
-# Daily use extras
+# ---- 核心必需 ----
+zsh
+eza
+bat
+git
+tmux
+neovim
+fzf
+ripgrep
+mise
+opencode
+lazygit
+trzsz-go
+trzsz-ssh
+jq
+
+# ---- 日常使用 ----
 gh
 # xcodes CLI 属于 tap XcodesOrg/made，不在官方 core —— 必须写全路径。
 XcodesOrg/made/xcodes
 
-# Zsh enhancements
+# ---- Zsh 增强 ----
 # ⚠️ 两对竞品，每个都只能留一个（同时装两个会互相打架，且没被 source 的那个
 #    属于「装了却永不生效」）：
 #   zsh-autosuggestions           vs zsh-autocomplete      → 留 autosuggestions
@@ -17,7 +34,7 @@ zsh-completions
 zsh-syntax-highlighting
 zsh-history-substring-search
 
-# Dev tools
+# ---- 开发工具 ----
 fd
 direnv
 git-lfs
@@ -26,12 +43,12 @@ coreutils
 findutils
 moreutils
 
-# Monitoring
+# ---- 监控 ----
 bottom
 htop
 ncdu
 
-# Utilities
+# ---- 杂项 ----
 wget
 tree
 zoxide

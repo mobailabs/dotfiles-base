@@ -115,7 +115,8 @@ main() {
 
   local with_cask="${WITH_CASK:-0}"
 
-  local common_cli="$ROOT_DIR/packages/common/brew-cli.txt"
+  # 仓库只做 macOS，所以不再分 common / macos 两份清单 —— 就一个 brew-cli.txt。
+  # （原先的 packages/common/brew-cli.txt 与 packages/macos/brew-cli.txt 已合并。）
   local os_cli="$ROOT_DIR/packages/$os/brew-cli.txt"
   local macos_cask="$ROOT_DIR/packages/macos/brew-cask.txt"
 
@@ -126,7 +127,7 @@ main() {
   local -a failed=()
 
   local pkgs
-  pkgs="$( { read_list "$common_cli"; read_list "$os_cli"; } | sort -u )"
+  pkgs="$(read_list "$os_cli" | sort -u)"
   if [[ -n "$pkgs" ]]; then
     local p
     while IFS= read -r p; do

@@ -38,7 +38,7 @@
 > 为什么要有它：tmux 的配置查找顺序是 `~/.config/tmux/tmux.conf` 优先、
 > `~/.tmux.conf` 其次（3.1 起支持 XDG）。所以 **tmux 3.1+ 直接读 XDG 那份，
 > 根本不读 shim**；shim 是给 **tmux < 3.1** 用的。它还被
-> `scripts/common/tmux-plugins-install.zsh` 当作「要不要装插件」的开关 ——
+> `scripts/macos/tmux-plugins-install.zsh` 当作「要不要装插件」的开关 ——
 > 所以**不能删**。
 >
 > **改配置去 `config/tmux.conf`。往 shim 里加东西在 3.1+ 上永远不生效。**
@@ -50,12 +50,12 @@
 必需：
 
 ```sh
-brew install tmux        # 已在 packages/common/brew-cli.txt
+brew install tmux        # 已在 packages/macos/brew-cli.txt
 ```
 
 推荐（缺失时功能降级，不报错）：
 
-- `fzf` —— `tsel` / `tkill` 的交互选择（已在 `packages/common/brew-cli.txt`）
+- `fzf` —— `tsel` / `tkill` 的交互选择（已在 `packages/macos/brew-cli.txt`）
 - TPM —— 插件管理器，`install.zsh` 会自动装
 - `pbcopy` / `pbpaste` —— macOS 自带
 

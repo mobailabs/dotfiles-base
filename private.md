@@ -626,7 +626,7 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 | `install.zsh` 的 prompt-once 步骤 | `prompt-once.zsh` 调 `private-state.zsh --write` | 全部（此时刚处理完 gitconfig / ssh） |
 | macview 主动检测 | macview 调 `private-state.zsh --stdout` | 全部（只读，不落盘） |
 
-`scripts/common/private-state.zsh` 只做一件事：检查**五个**槽位 → 输出 / 写入状态。
+`scripts/macos/private-state.zsh` 只做一件事：检查**五个**槽位 → 输出 / 写入状态。
 它**不装东西、不改 `$HOME`**（除了 `--write` 时的状态文件本身），
 和 `brew-audit.zsh` 是同一类「只读检测器」。
 
@@ -673,7 +673,7 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 - [x] `checked_at` 用 **Unix 秒（整数）**
 - [x] `target` / `loaded_by` 用**绝对路径**（读取方不做 `~` 展开）
 - [x] `version` 的读取规则（高版本 → 拒绝解析并提示升级）
-- [x] 检测入口：**独立脚本 `scripts/common/private-state.zsh`**，双 flag
+- [x] 检测入口：**独立脚本 `scripts/macos/private-state.zsh`**，双 flag
       （`--write` 落盘给 prompt-once 用，`--stdout` 输出给 macview 用），
       一份检测逻辑两个调用方；**不做** `install.zsh private` 子命令
       （那会让 install 变成 macview 的入口，职责混乱）

@@ -18,7 +18,7 @@
 # 这个脚本把它们全查一遍。**只读**，不改任何东西，不联网。
 #
 # 用法：
-#   zsh scripts/common/selfcheck.zsh       # 有问题 exit 1
+#   zsh scripts/macos/selfcheck.zsh       # 有问题 exit 1
 #
 # 它检查的是**仓库内部一致性**，不检查机器状态（那是 brew-audit /
 # private-state 的事）。macOS 也不需要 —— 纯文本检查，任何机器都能跑。
@@ -48,7 +48,7 @@ warn() { _warn=$((_warn + 1)); echo "  ! $1"; }
 check_links() {
   section "落点（link-dotfiles.zsh ←→ src/macos/config/）"
 
-  local linkfile="$ROOT_DIR/scripts/common/link-dotfiles.zsh"
+  local linkfile="$ROOT_DIR/scripts/macos/link-dotfiles.zsh"
   local cfgroot="$ROOT_DIR/src/macos/config"
   local -a declared=()
 
@@ -94,7 +94,7 @@ check_links() {
 
 # ── 2. 文档引用的脚本 / 文件是否真实存在 ─────────────────────────────────
 #
-# 只查**明确写成仓库路径**的引用（比如 `scripts/common/foo.zsh`），
+# 只查**明确写成仓库路径**的引用（比如 `scripts/macos/foo.zsh`），
 # 不查自然语言里的描述 —— 那样误报太多。
 check_doc_refs() {
   section "文档里的仓库路径引用"
@@ -266,7 +266,7 @@ check_private_slots() {
   section "private.md 槽位 ←→ private-state.zsh"
 
   local md="$ROOT_DIR/private.md"
-  local impl="$ROOT_DIR/scripts/common/private-state.zsh"
+  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
 
   [[ -f "$md" ]]   || { warn "private.md 不在，跳过"; return; }
   [[ -f "$impl" ]] || { warn "private-state.zsh 不在，跳过"; return; }
@@ -329,7 +329,7 @@ check_syntax() {
 check_private_json() {
   section "private-state.zsh 产出合法 JSON"
 
-  local impl="$ROOT_DIR/scripts/common/private-state.zsh"
+  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
   [[ -f "$impl" ]] || { warn "跳过"; return; }
 
   if ! command -v python3 >/dev/null 2>&1; then

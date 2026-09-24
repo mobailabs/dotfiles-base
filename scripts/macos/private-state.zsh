@@ -28,9 +28,9 @@
 # 「**落到 $HOME 的那份真的生效了**」，源改好了但没链过去不算。
 #
 # 用法：
-#   zsh scripts/common/private-state.zsh --stdout    # 打印 JSON
-#   zsh scripts/common/private-state.zsh --write     # 写契约文件
-#   zsh scripts/common/private-state.zsh --write --quiet
+#   zsh scripts/macos/private-state.zsh --stdout    # 打印 JSON
+#   zsh scripts/macos/private-state.zsh --write     # 写契约文件
+#   zsh scripts/macos/private-state.zsh --write --quiet
 
 set -uo pipefail
 
@@ -80,7 +80,7 @@ QUIET=0
 
 usage() {
   cat <<'EOF'
-Usage: zsh scripts/common/private-state.zsh <--write|--stdout> [--quiet]
+Usage: zsh scripts/macos/private-state.zsh <--write|--stdout> [--quiet]
 
   --write    产出 ~/.config/dotfiles/private-state.json（原子写，0600）
   --stdout   把同一份 JSON 打到 stdout，不落盘

@@ -12,14 +12,14 @@
 #
 # ## 解析规则
 #
-# 与 scripts/common/brew-packages-install.zsh 保持同一套：
+# 与 scripts/macos/brew-packages-install.zsh 保持同一套：
 #   `#` 之后是注释 / 去掉前导空白后取第一个字段 / 取 basename 去比。
 # 两处任何一处改了规则，另一边必须同步 —— 否则装的和报的会对不上。
 #
 # 只覆盖公共仓库的 3 份清单（common/macos cli + macos cask）。
 #
 # 用法：
-#   zsh scripts/common/brew-audit.zsh
+#   zsh scripts/macos/brew-audit.zsh
 
 set -uo pipefail
 
@@ -66,13 +66,15 @@ main() {
 
   # label|kind|path —— 与 macview 的 packageListFiles 对应。
   #
-  # ⚠️ 只覆盖**公共仓库**的 3 份。私有源里的 `packages/*.private.txt`
+  # ⚠️ 只覆盖**公共仓库**的这 2 份。私有源里的 `packages/*.private.txt`
   # 本脚本读不到（私有源路径不在公开仓库里，见 private.md 的契约）。
   # 所以两边在「用户配了私有源」时结果会不同 —— 这是已知差异，不是 bug。
+  #
+  # 以前是 3 条（common formulae / macos formulae / casks）—— 前两份已合并
+  # 成 packages/macos/brew-cli.txt（仓库只做 macOS）。
   local specs=(
-    "公共 / 通用 formulae|formula|$ROOT_DIR/packages/common/brew-cli.txt"
-    "公共 / macos formulae|formula|$ROOT_DIR/packages/macos/brew-cli.txt"
-    "公共 / macos casks|cask|$ROOT_DIR/packages/macos/brew-cask.txt"
+    "公共 / formulae|formula|$ROOT_DIR/packages/macos/brew-cli.txt"
+    "公共 / casks|cask|$ROOT_DIR/packages/macos/brew-cask.txt"
   )
 
   local installed_formulae installed_casks

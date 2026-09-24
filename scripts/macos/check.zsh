@@ -15,7 +15,7 @@
 #   - 硬依赖（缺了就没法继续）：macOS、git、网络
 #   - 软依赖（缺了由后续脚本自己引导）：brew、mise
 #     —— brew 由 scripts/macos/brew-bootstrap.zsh 自动装，
-#        mise 由 brew 装（在 packages/common/brew-cli.txt 里），
+#        mise 由 brew 装（在 packages/macos/brew-cli.txt 里），
 #        所以它们**缺失是正常的**，这里只提示会怎么补，不报错。
 
 set -uo pipefail
@@ -27,7 +27,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # 用共享的 brew-env 探测并把环境补进当前进程（同一套探测，不各写一份）。
 # 找不到 brew 时它返回非零，下面的软依赖检查会据此给出提示。
 brew_ready=0
-source "$ROOT_DIR/scripts/common/brew-env.zsh" && brew_ready=1
+source "$ROOT_DIR/scripts/macos/brew-env.zsh" && brew_ready=1
 
 fatal=()
 warn=()
@@ -60,7 +60,7 @@ fi
 # ---- 软依赖（会被自动补） ----
 #
 # brew / mise 缺失是**正常的**：brew 由 brew-bootstrap 自动装，
-# mise 由 brew 装（在 packages/common/brew-cli.txt 里）。
+# mise 由 brew 装（在 packages/macos/brew-cli.txt 里）。
 # 所以这里只提示会怎么补，不报错。
 # 探测已经由上面的 brew-env 做过了（brew_ready）。
 if (( brew_ready == 0 )); then

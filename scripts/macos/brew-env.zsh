@@ -18,7 +18,7 @@
 #
 # ## 用法
 #
-#     source "$ROOT_DIR/scripts/common/brew-env.zsh"
+#     source "$ROOT_DIR/scripts/macos/brew-env.zsh"
 #
 # `set -u` 下也安全；找不到 brew 就静默返回非零（调用方自己决定怎么办）。
 

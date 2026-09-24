@@ -209,7 +209,7 @@ run_base() {
   # 它最后还会写一份「私有源状态」给 macview 读（契约见 private.md）——
   # 之所以放这里，是因为此刻身份和 ssh 都刚处理完，记下的才是真实状态。
   run_step "一次性设置（身份 / 权限 / ssh）" \
-    "$SCRIPT_DIR/scripts/common/prompt-once.zsh" "${INSTALL_ARGS[@]}"
+    "$SCRIPT_DIR/scripts/macos/prompt-once.zsh" "${INSTALL_ARGS[@]}"
 
   # prompt-once 可能刚做了 sudo 预授权。装包动辄十几分钟，而时间戳默认
   # 5 分钟就过期 —— 开个后台循环持续刷新，否则 prefs 那步会重新弹密码。
@@ -227,14 +227,14 @@ run_base() {
   # 不会回传到本进程。本进程是非交互的，PATH 还是 launchd 的最小值，
   # 所以后面的 mise / tmux 都看不见 homebrew 装的东西。
   # 这里把 homebrew 环境补进当前进程，堵上这个缺口。
-  source "$SCRIPT_DIR/scripts/common/brew-env.zsh" || true
+  source "$SCRIPT_DIR/scripts/macos/brew-env.zsh" || true
 
-  run_step "oh-my-zsh"            "$SCRIPT_DIR/scripts/common/oh-my-zsh-install.zsh"
-  run_step "zsh 插件"              "$SCRIPT_DIR/scripts/common/zsh-plugins-install.zsh"
+  run_step "oh-my-zsh"            "$SCRIPT_DIR/scripts/macos/oh-my-zsh-install.zsh"
+  run_step "zsh 插件"              "$SCRIPT_DIR/scripts/macos/zsh-plugins-install.zsh"
   # 链接配置放在装包之后、但不受装包失败影响 —— 这是本流程最该保证的一步。
-  run_step "链接配置文件"           "$SCRIPT_DIR/scripts/common/link-dotfiles.zsh"
-  run_step "tmux 插件（TPM）"       "$SCRIPT_DIR/scripts/common/tmux-plugins-install.zsh"
-  run_step "mise 工具"             "$SCRIPT_DIR/scripts/common/mise-setup.zsh"
+  run_step "链接配置文件"           "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh"
+  run_step "tmux 插件（TPM）"       "$SCRIPT_DIR/scripts/macos/tmux-plugins-install.zsh"
+  run_step "mise 工具"             "$SCRIPT_DIR/scripts/macos/mise-setup.zsh"
   # 偏好可能要求 sudo 密码；你按了取消也不该让前面装好的东西白费。
   run_step "macOS 系统偏好"         "$SCRIPT_DIR/scripts/macos/prefs.zsh"
 
@@ -292,9 +292,9 @@ main() {
   case "$cmd" in
     base) run_base ;;
     prefs) "$SCRIPT_DIR/scripts/macos/prefs.zsh" ;;
-    link) "$SCRIPT_DIR/scripts/common/link-dotfiles.zsh" ;;
-    audit) "$SCRIPT_DIR/scripts/common/brew-audit.zsh" ;;
-    check) zsh "$SCRIPT_DIR/scripts/common/selfcheck.zsh" ;;
+    link) "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh" ;;
+    audit) "$SCRIPT_DIR/scripts/macos/brew-audit.zsh" ;;
+    check) zsh "$SCRIPT_DIR/scripts/macos/selfcheck.zsh" ;;
     help|-h|--help) usage ;;
     *)
       echo "Unknown command: $cmd" >&2

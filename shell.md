@@ -76,7 +76,7 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
    别的文件别再写 `/opt/homebrew` / `/usr/local` 判断来决定 `HOMEBREW_PREFIX` 或 PATH。
    加一台不同路径的机器本来要改 4 处、漏一处就静默失效 —— 现在收敛到：
    - 交互 shell → `.zshenv`
-   - 非交互脚本 / 子进程 → `scripts/common/brew-env.zsh`
+   - 非交互脚本 / 子进程 → `scripts/macos/brew-env.zsh`
    - 唯一例外 → `scripts/macos/brew-bootstrap.zsh`（要**装** brew，鸡生蛋）
 
    > ⚠️ `.zshenv` 里的探测门开在「brew 的 bin 在不在 PATH 里」，**不是**

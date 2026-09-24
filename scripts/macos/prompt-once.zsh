@@ -248,7 +248,7 @@ main() {
 # 它读的是「上次跑 install 时的状态」。prompt-once 是全流程唯一一次
 # 已经问完、可以落地状态的地方（install.zsh 的其余步骤都是纯安装）。
 write_private_state() {
-  local script="$ROOT_DIR/scripts/common/private-state.zsh"
+  local script="$ROOT_DIR/scripts/macos/private-state.zsh"
   if [[ ! -f "$script" ]]; then
     echo "  ! 找不到 private-state.zsh，跳过私有源状态。" >&2
     return 0

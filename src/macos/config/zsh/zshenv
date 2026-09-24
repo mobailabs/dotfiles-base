@@ -77,7 +77,7 @@ export PATH
 # 都会加载它，所以在 zprofile / zshrc 里就不用再各探一次了。
 #
 # 这里只设路径（不执行 brew 命令，免得拖慢启动）。
-# 需要**把 brew 环境拉进当前进程**的脚本用 scripts/common/brew-env.zsh，
+# 需要**把 brew 环境拉进当前进程**的脚本用 scripts/macos/brew-env.zsh，
 # 那是给非交互 / 子进程场景用的共享实现；两者判断同一批路径。
 #
 # 以前这套「先 /opt/homebrew 再 /usr/local」的判断在 4 个地方各写了一遍

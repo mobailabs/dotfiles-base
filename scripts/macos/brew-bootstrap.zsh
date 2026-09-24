@@ -4,7 +4,7 @@
 #
 # ## 为什么这里还自己探测路径
 #
-# 仓库里 Homebrew 探测的**共享实现**是 scripts/common/brew-env.zsh。
+# 仓库里 Homebrew 探测的**共享实现**是 scripts/macos/brew-env.zsh。
 # 本文件是**唯一不能复用它**的地方：它要在 brew 还没装时先装 brew —— 鸡生蛋问题，
 # 它引用的 helper 本身也得先找到 brew。
 # 所以这里保留一份最小探测。装完 brew 后，后续步骤一律走 brew-env.zsh。

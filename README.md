@@ -96,15 +96,15 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ├── README.md                ← 本文件：装什么、怎么装、改哪里
 ├── shell.md                 ← shell 加载链的完整说明（PATH/环境变量/别名/函数）
 ├── private.md               ← 公开仓库↔私有源的接口契约（macview 读的状态格式）
-├── packages/                ← 要装什么
-│   ├── common/brew-cli.txt
+├── packages/                ← 要装什么（仓库只做 macOS，所以没有平台分层）
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
-│   ├── common/              ← brew / 插件 / 链接 / mise / 对账 / 私有源状态
-│   │   ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
-│   │   ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
-│   │   └── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
-│   └── macos/check.zsh, brew-install.zsh, prefs.d/  ← 系统偏好，一个文件一个主题
+│   └── macos/               ← 全部脚本（brew / 插件 / 链接 / mise / 对账 / 私有源状态）
+│       ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
+│       ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
+│       ├── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
+│       ├── check.zsh, brew-install.zsh
+│       └── prefs.d/         ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
 │   ├── zsh/  env/  shell/   ← .zshenv/.zshrc/别名/函数/导出变量
 │   ├── git/                 ← gitconfig + 全局 gitignore/gitattributes
@@ -112,14 +112,19 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 │   └── nvim/  mise/         ← 编辑器与工具版本
 ```
 
+> **为什么没有 `common/` 分层**：这个仓库**只做 macOS**（Linux 支持已删，
+> 见下面「只做 macOS」）。因此 `packages/common/` 和 `scripts/common/`
+> 的存在只会在每个文件上多问一句「这算通用还是 macOS 专属」——而答案永远
+> 不影响任何行为。已合并进 `macos/`。
+
 `src/` 里的东西**不直接生效** —— 它们是源，被链接到 `$HOME` 才生效。
 
 ---
 
 ## 包清单的格式（**别改**）
 
-`packages/*/brew-*.txt` 的格式由 `scripts/common/brew-packages-install.zsh`
-（装）和 `scripts/common/brew-audit.zsh`（对账）共同解析。规则：
+`packages/*/brew-*.txt` 的格式由 `scripts/macos/brew-packages-install.zsh`
+（装）和 `scripts/macos/brew-audit.zsh`（对账）共同解析。规则：
 
 - 一行一个包，`#` 之后是注释，取每行**第一个空白分隔**的字段
 - 带 tap 的写全路径 `user/tap/formula`（brew 会顺带自动 tap）；
@@ -184,13 +189,13 @@ zsh install.zsh check
 
 | 想改什么 | 改哪 |
 |---|---|
-| 加一个要链接的配置文件 | `scripts/common/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/macos/config/` 放源 |
+| 加一个要链接的配置文件 | `scripts/macos/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/macos/config/` 放源 |
 | 加一个要装的软件 | `packages/{common,macos}/brew-*.txt` |
 | 改 shell 别名 | `src/macos/config/aliases`（一行别名）/ `src/macos/config/shell/funcs`（函数） |
 | 改系统偏好 | `scripts/macos/prefs.d/*.zsh` |
-| 改开头那几个提问 | `scripts/common/prompt-once.zsh` |
+| 改开头那几个提问 | `scripts/macos/prompt-once.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
-| 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/common/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
+| 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/macos/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
 | 加一个机器专属的东西 | 私有源，**不是这里**（接口见 `private.md`） |
 | **改完任何东西** | 跑 `zsh install.zsh check`（见下面「改完跑一下自检」） |
 
@@ -200,7 +205,7 @@ zsh install.zsh check
 
 ## 落点声明：写在哪
 
-落点声明**就在 `scripts/common/link-dotfiles.zsh` 里**（`DOTFILE_LINKS` 数组）。
+落点声明**就在 `scripts/macos/link-dotfiles.zsh` 里**（`DOTFILE_LINKS` 数组）。
 每行两个字段，用 `|` 分隔：
 
 ```zsh
@@ -232,7 +237,7 @@ DOTFILE_LINKS=(
 macview 读 `~/.config/dotfiles/private-state.json`，就能区分「没有私有源」
 （正常）和「有但没装好」（要修）。
 
-这个文件由 `scripts/common/private-state.zsh` 产出，两个调用方：
+这个文件由 `scripts/macos/private-state.zsh` 产出，两个调用方：
 
 - `install.zsh` 的 prompt-once 步骤跑 `--write`（每次安装后刷新）
 - macview 需要时可跑 `--stdout`（只读，不落盘）

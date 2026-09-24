@@ -14,11 +14,11 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # bootstrap 装完 brew 后，新 shell 里才有 /opt/homebrew/bin。
 # 这里用共享的 brew-env 把 brew 环境补进本进程（同一套探测，不各写一份），
 # 保证后续脚本在本进程里能找到 brew。
-source "$ROOT_DIR/scripts/common/brew-env.zsh" || true
+source "$ROOT_DIR/scripts/macos/brew-env.zsh" || true
 
 if ! command -v brew >/dev/null 2>&1; then
   echo "brew-install: 引导后仍找不到 brew。" >&2
   exit 1
 fi
 
-WITH_CASK=1 "$ROOT_DIR/scripts/common/brew-packages-install.zsh"
+WITH_CASK=1 "$ROOT_DIR/scripts/macos/brew-packages-install.zsh"
