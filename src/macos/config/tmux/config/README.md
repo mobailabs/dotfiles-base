@@ -28,8 +28,20 @@
 └── sessions/
     └── popup.tmux.conf       # popup 会话的独立配置
 
-~/.tmux.conf                  # → 链接到上面的 tmux.conf
+~/.tmux.conf                  # → 兼容层 shim（不是主配置！见下）
 ```
+
+> **关于 `~/.tmux.conf`**：它链接到的**不是** `config/tmux.conf`，而是仓库里的
+> `src/macos/config/tmux/tmux.conf` —— 一个 3 行的**转发 shim**，内容是
+> `source-file ~/.config/tmux/tmux.conf`。
+>
+> 为什么要有它：tmux 的配置查找顺序是 `~/.config/tmux/tmux.conf` 优先、
+> `~/.tmux.conf` 其次（3.1 起支持 XDG）。所以 **tmux 3.1+ 直接读 XDG 那份，
+> 根本不读 shim**；shim 是给 **tmux < 3.1** 用的。它还被
+> `scripts/common/tmux-plugins-install.zsh` 当作「要不要装插件」的开关 ——
+> 所以**不能删**。
+>
+> **改配置去 `config/tmux.conf`。往 shim 里加东西在 3.1+ 上永远不生效。**
 
 ---
 
@@ -214,12 +226,17 @@ bind-key C-a send-prefix
 `tmux.conf`（它是链接，改的是仓库源文件）；不想进仓库的放 `~/.tmux.conf.local`
 并在 `tmux.conf` 末尾 source —— 目前**没有**这个文件，别以为它自动生效。
 
+> 注意是 `tmux.conf`（= `config/tmux.conf`），**不是** `~/.tmux.conf` ——
+> 后者是转发 shim，往里加东西在 tmux 3.1+ 上不生效（见文件顶部说明）。
+
 ---
 
 ## 故障排查
 
 ```sh
 # 配置语法
+# 注意：这条走的是 ~/.tmux.conf（转发 shim），所以它顺带验证了 shim 能用。
+# 想直接验证真配置就 tmux -f ~/.config/tmux/tmux.conf start-server
 tmux -f ~/.tmux.conf start-server
 
 # 插件没加载
