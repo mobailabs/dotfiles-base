@@ -21,10 +21,4 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-# 修掉 Homebrew 留下的「补全目录 group 可写」—— 否则每次开 shell 都会看到
-# oh-my-zsh 的 insecure directories 警告。原因、为什么这么修见该脚本顶部注释。
-# 放在装包**之前**：这样后面的步骤（以及用户装完第一次开 shell）都不带警告。
-# 用 `|| true`：这是锦上添花的修补，失败不该让装包这步失败。
-"$ROOT_DIR/scripts/macos/brew-fix-completions-perms.zsh" || true
-
 WITH_CASK=1 "$ROOT_DIR/scripts/macos/brew-packages-install.zsh"
