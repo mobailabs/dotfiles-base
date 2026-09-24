@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 
-# LM Studio CLI 在 PATH 里。两个历史路径都试 —— 旧版装在 .cache 下，
-# 新版装在 .lmstudio 下。哪个存在加哪个，都不存在就什么都不做。
-if [[ -d "$HOME/.cache/lm-studio/bin" ]]; then
-  export PATH="$PATH:$HOME/.cache/lm-studio/bin"
-fi
-if [[ -d "$HOME/.lmstudio/bin" ]]; then
-  export PATH="$PATH:$HOME/.lmstudio/bin"
-fi
+# 这个文件只做**一件事**：把 bash 用户弹进 zsh。
+#
+# 它以前还负责往 PATH 里加 LM Studio 的 bin（手拼 `$PATH:...`，不去重）。
+# 那些已经收敛进 `~/.zshenv` —— 那里是 PATH 的唯一归属，而且 `exec zsh -l`
+# 之后 zshenv 一定会加载，所以在这里重复加没有任何好处，只会造成两套
+# 逻辑（一套去重一套不去重）不同步。
+#
+# 不动 PATH 还有一个好处：万一 zsh 不存在或 exec 失败，这个文件不会
+# 在 bash 里留下半套环境。
 
 # 交互式 shell 且存在 zsh，就切到 zsh 登录 shell
 if [[ -t 1 && "$SHELL" != *"zsh" ]] && command -v zsh >/dev/null 2>&1; then

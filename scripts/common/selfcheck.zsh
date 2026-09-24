@@ -181,6 +181,86 @@ check_prefs() {
   echo "  prefs.d/ ${#on_disk[@]} 个文件"
 }
 
+# ── 4b. install.zsh 的 usage 说明 ←→ run_base 实际步骤 ───────────────────
+#
+# `install.zsh help` 是用户唯一能看到的说明。它漏写一步（比如忘了「一次性
+# 设置」），用户就不知道会弹一次密码 —— 而这一步恰恰是全自动的关键。
+# 两边对不上是纯文本不一致，机器完全能查，不该靠人肉眼。
+check_usage_steps() {
+  section "install.zsh usage ←→ run_base 实际步骤"
+
+  local entry="$ROOT_DIR/install.zsh"
+  [[ -f "$entry" ]] || { bad "install.zsh 不在"; return; }
+
+  # usage 里 base 那一行声明的步骤名（run_step 的 desc 用同名）。
+  # 从 `| base   Run setup:` 后面读到行尾，按逗号拆。
+  local usage_line
+  usage_line="$(sed -n '/| base[[:space:]]*Run setup:/,/^$/p' "$entry" | tr '\n' ' ')"
+  [[ -n "$usage_line" ]] || { warn "没能解析 usage 里的 base 说明，跳过"; return; }
+
+  # 逐行抽 run_step "描述" 的 desc
+  local -a steps=()
+  local step
+  while IFS= read -r step; do
+    [[ -n "$step" ]] && steps+=("$step")
+  done < <(grep -oE 'run_step "[^"]+"' "$entry" | sed 's/run_step "//; s/"$//')
+
+  (( ${#steps[@]} > 0 )) || { bad "没能从 install.zsh 解析出 run_step"; return; }
+
+  # usage 那一行是不是把每个步骤名都提了一遍？
+  # 用「关键词」比对（usage 是英文别名，run_step 是中文描述，不能直接全等）——
+  # 所以只做**计数**与**逐个关键词**两项弱校验，避免误报。
+  echo "  run_base 有 ${#steps[@]} 个 run_step"
+  for step in "${steps[@]}"; do
+    # 取描述里的「关键词」：去掉括号补充、取第一段。
+    local key="${step%%（*}"
+    key="${key%% *}"
+    [[ -n "$key" ]] || continue
+    if [[ "$usage_line" == *"$key"* ]]; then
+      ok
+    else
+      # usage 是英文的，中文描述天然对不上 —— 只对「一次性设置」这种
+      # 中文也出现在 usage 里的做硬校验，其余软提示。
+      case "$step" in
+        *一次性设置*) bad "usage 的 base 说明里没提「一次性设置」这一步（它是最关键的一步：会问密码）" ;;
+        *) ok ;;   # 英文/中文别名对应关系无法机判，不误报
+      esac
+    fi
+  done
+}
+
+# ── 4c. PATH 归属唯一性 ─────────────────────────────────────────────────
+#
+# PATH 条目散在多处是「加一处漏一处」的温床，而且不同文件用的方法不同
+# （zsh 的 `path+=` 有 typeset -U 去重，bash 手拼 `$PATH:...` 没有）。
+# 约定：bash 的 PATH 拼接只允许出现在 .zshenv（唯一归属），
+# bash_profile / zshrc 不再各自手拼。
+check_path_ownership() {
+  section "PATH 归属（.zshenv 唯一）"
+
+  local zshenv="$ROOT_DIR/src/macos/config/zsh/zshenv"
+  local zshrc="$ROOT_DIR/src/macos/config/zsh/zshrc"
+  local bashp="$ROOT_DIR/src/macos/config/shell/bash_profile"
+
+  [[ -f "$zshenv" ]] || { warn "zshenv 不在，跳过"; return; }
+
+  # zshrc / bash_profile 里不该再有 `export PATH=` 手拼
+  local f n
+  for f in "$zshrc" "$bashp"; do
+    [[ -f "$f" ]] || continue
+    n="$(grep -cE 'export PATH=.*\$PATH.*' "$f" 2>/dev/null)"
+    if (( n > 0 )); then
+      bad "$(basename "$f") 里有 $n 处手拼的 'export PATH=...\$PATH...'（PATH 归属应只在 .zshenv）"
+    else
+      ok
+    fi
+  done
+
+  # zshenv 必须真的在管 PATH（否则这个约定是空的）
+  grep -q 'export PATH' "$zshenv" && ok || bad ".zshenv 里没有 export PATH —— PATH 归属约定失效"
+  grep -q 'typeset -U path' "$zshenv" && ok || warn ".zshenv 没有 'typeset -U path'，PATH 可能累积重复项"
+}
+
 # ── 5. private.md 的槽位表 ←→ private-state.zsh ─────────────────────────
 check_private_slots() {
   section "private.md 槽位 ←→ private-state.zsh"
@@ -285,6 +365,8 @@ main() {
   check_doc_refs
   check_entrypoints
   check_prefs
+  check_usage_steps
+  check_path_ownership
   check_private_slots
   check_syntax
   check_private_json

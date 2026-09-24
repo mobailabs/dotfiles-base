@@ -53,6 +53,20 @@ unset _pre
 # Bun 路径
 [[ -d "$HOME/.bun/bin" ]] && path+=("$HOME/.bun/bin")
 
+# npm / LM Studio CLI 路径
+#
+# 这里是**唯一**放它们的地方。以前 `.lmstudio/bin` 在 zshrc 里也加过一次，
+# `.cache/lm-studio/bin` 则只在 bash_profile 里加 —— 同一个程序的位置散在
+# 两套逻辑里（一套 zsh 的 `path+=` + typeset -U 去重，一套 bash 的手拼
+# `$PATH:...` 完全不去重），加一处必漏一处。
+#
+# 放 .zshenv 而不是 .zshrc：所有 shell 都加载它，bash_profile 弹进 zsh 后
+# 也一定能拿到（zshenv 排在 zshrc 之前）。
+[[ -d "$HOME/.npm-global/bin" ]] && path+=("$HOME/.npm-global/bin")
+# 两个历史路径都试：旧版 LM Studio 装在 .cache 下，新版装在 .lmstudio 下。
+[[ -d "$HOME/.cache/lm-studio/bin" ]] && path+=("$HOME/.cache/lm-studio/bin")
+[[ -d "$HOME/.lmstudio/bin" ]] && path+=("$HOME/.lmstudio/bin")
+
 # 导出 PATH
 export PATH
 
@@ -74,32 +88,61 @@ export PATH
 #
 # 做的事和 `brew shellenv` 一样：设 HOMEBREW_* 并把 bin 加到 PATH。
 # 不直接 eval `brew shellenv` 是因为它在非交互 shell 里会拖慢启动，
-# 而这里只需要路径信息。brew 装了之后 HOMEBREW_PREFIX 就已存在，
-# 下面的判断会直接跳过。
+# 而这里只需要路径信息。
+#
+# ⚠️ 探测条件**不能**写成 `if [[ -z "$HOMEBREW_PREFIX" ]]`。
+# 那样等于假设「HOMEBREW_PREFIX 已设 ⇒ brew 环境已就绪」——这个假设不成立：
+# 环境里可能有个 HOMEBREW_PREFIX（GUI 启动、脚本 export、继承来的），
+# 而 PATH 里根本没有 brew 的 bin。此时整段被跳过，后果是：
+#
+#   - brew 命令找不到（PATH 没加）
+#   - MANPATH / INFOPATH / CELLAR / REPOSITORY 全都没设
+#
+# 而且**不报错、没有任何线索**。登录 shell 有 zprofile 的 `brew shellenv`
+# 兜底看不出来，但非登录交互 shell（tmux pane、ghostty 新 tab）不走
+# zprofile → 直接坏。
+#
+# 所以：**先确定 prefix**（用已有的，没有才去探），再**逐项补齐缺的**。
+# 每项各自判断，不再用一个总开关门住一整段。
 if [[ -z "${HOMEBREW_PREFIX:-}" ]]; then
   if [[ -x "/opt/homebrew/bin/brew" ]]; then
     export HOMEBREW_PREFIX="/opt/homebrew"
   elif [[ -x "/usr/local/bin/brew" ]]; then
     export HOMEBREW_PREFIX="/usr/local"
   fi
+fi
 
-  if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
-    export HOMEBREW_CELLAR="$HOMEBREW_PREFIX/Cellar"
-    # ⚠️ HOMEBREW_REPOSITORY 在 Apple Silicon 上等于 prefix（/opt/homebrew），
-    # 但在 Intel 上是 prefix 下的 Homebrew（/usr/local/Homebrew）—— 写死成
-    # `$HOMEBREW_PREFIX` 在 Intel 机器上会指错。按 ARCH 分辨。
+if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
+  # 同理：不能因为变量已设就跳过。变量可能是空串或指错，一律按需补。
+  [[ -z "${HOMEBREW_CELLAR:-}" ]] && export HOMEBREW_CELLAR="$HOMEBREW_PREFIX/Cellar"
+
+  # ⚠️ HOMEBREW_REPOSITORY 在 Apple Silicon 上等于 prefix（/opt/homebrew），
+  # 但在 Intel 上是 prefix 下的 Homebrew（/usr/local/Homebrew）—— 写死成
+  # `$HOMEBREW_PREFIX` 在 Intel 机器上会指错。按 ARCH 分辨。
+  if [[ -z "${HOMEBREW_REPOSITORY:-}" ]]; then
     if [[ "$(uname -m)" == "arm64" ]]; then
       export HOMEBREW_REPOSITORY="$HOMEBREW_PREFIX"
     else
       export HOMEBREW_REPOSITORY="$HOMEBREW_PREFIX/Homebrew"
     fi
-    [[ -d "$HOMEBREW_PREFIX/bin" ]] && path=("$HOMEBREW_PREFIX/bin" $path)
-    [[ -d "$HOMEBREW_PREFIX/sbin" ]] && path+=("$HOMEBREW_PREFIX/sbin")
-    # man / info 页路径（brew shellenv 也会设，非登录 shell 不走 .zprofile，
-    # 所以这里补上，否则 man 找不到 brew 装的工具手册）。
-    export MANPATH="$HOMEBREW_PREFIX/share/man:${MANPATH:-}"
-    export INFOPATH="$HOMEBREW_PREFIX/share/info:${INFOPATH:-}"
   fi
+
+  # PATH：只看 brew 的 bin 在不在 PATH 里，不看 HOMEBREW_PREFIX 设没设。
+  # （typeset -U path 会去重，所以重复经过这里也不会累积。）
+  if [[ -d "$HOMEBREW_PREFIX/bin" ]]; then
+    [[ ":$PATH:" == *":$HOMEBREW_PREFIX/bin:"* ]] || path=("$HOMEBREW_PREFIX/bin" $path)
+  fi
+  if [[ -d "$HOMEBREW_PREFIX/sbin" ]]; then
+    [[ ":$PATH:" == *":$HOMEBREW_PREFIX/sbin:"* ]] || path+=("$HOMEBREW_PREFIX/sbin")
+  fi
+
+  # man / info 页路径（brew shellenv 也会设，非登录 shell 不走 .zprofile，
+  # 所以这里补上，否则 man 找不到 brew 装的工具手册）。
+  # 同样按需补 —— 已经指对了就不再叠一次，免得 MANPATH 越跑越长。
+  [[ "${MANPATH:-}" != *"$HOMEBREW_PREFIX/share/man"* ]] \
+    && export MANPATH="$HOMEBREW_PREFIX/share/man:${MANPATH:-}"
+  [[ "${INFOPATH:-}" != *"$HOMEBREW_PREFIX/share/info"* ]] \
+    && export INFOPATH="$HOMEBREW_PREFIX/share/info:${INFOPATH:-}"
 fi
 
 # ============================================

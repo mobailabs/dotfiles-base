@@ -167,7 +167,9 @@ zsh install.zsh check
 - `DOTFILE_LINKS` 声明的落点 ←→ `src/macos/config/` 下真的有源（**两个方向都查**）
 - 文档里写到的仓库路径 ←→ 文件真的存在
 - `install.zsh` 调用的每个脚本 ←→ 存在
+- `install.zsh help` 的步骤说明 ←→ `run_base` 实际步骤（**会说会问密码的那一步在不在**）
 - `prefs.d/` 的顺序表 ←→ 磁盘上的文件（两个方向）
+- PATH 归属：只有 `.zshenv` 能手拼 PATH
 - `private.md` 的槽位 ←→ `private-state.zsh` 里的 `SLOTS`
 - 所有 `.zsh` / `prefs.d/*.zsh` 的语法
 - `private-state.zsh` 产出的 JSON 合法

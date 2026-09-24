@@ -206,11 +206,8 @@ fi
 
 [[ -f "$HOME/.config/tmux/aliases.sh" ]] && source "$HOME/.config/tmux/aliases.sh"
 
-# npm 全局 bin —— 只在目录存在时加，不无条件塞进 PATH。
-# （不存在的目录进 PATH 不会报错，但会让人以为那里有东西。）
-[[ -d "$HOME/.npm-global/bin" ]] && path+=("$HOME/.npm-global/bin")
+# PATH 里的 npm / LM Studio 路径已收进 ~/.zshenv（单一归属，见那里的注释）。
+# 这里不再重复 —— 重复的结果是两处不同步，且 zshrc 每次都会被走一遍。
 
-# LM Studio CLI (lms) —— 只在目录存在时加入 PATH，不写死用户名
-[[ -d "$HOME/.lmstudio/bin" ]] && path+=("$HOME/.lmstudio/bin")
 export PATH
 

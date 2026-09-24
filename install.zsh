@@ -9,8 +9,9 @@ usage() {
 Usage: zsh install.zsh [command] [options]
 
 Commands:
-  (empty) | base   Run setup: OS check, Homebrew + packages, oh-my-zsh,
-                   zsh plugins, link dotfiles, tmux plugins, mise, macOS prefs
+  (empty) | base   Run setup: 一次性设置（身份/权限/ssh）, OS check,
+                   Homebrew + packages, oh-my-zsh, zsh plugins,
+                   link dotfiles, tmux plugins, mise, macOS prefs
   prefs            Apply macOS preferences only (re-runnable, idempotent)
   link             Link dotfiles only
   audit            Report declared-but-not-installed brew packages (read-only)

@@ -34,6 +34,15 @@
 
 set -uo pipefail
 
+# $HOME 是所有落点的基准。没它的话下面 `$HOME/...` 要么崩在参数展开，
+# 要么（没开 set -u 时）产出 `/xxx` 这种**看起来合法、其实全错**的路径 ——
+# 静默给 macview 一份假状态，比直接失败更糟。
+# link-dotfiles.zsh 就是这么防的，这里保持一致。
+if [[ -z "${HOME:-}" ]]; then
+  echo "Error: HOME is not set; cannot determine dotfile locations." >&2
+  exit 1
+fi
+
 ROOT_DIR="$(cd "$(dirname "${0:A}")/../.." && pwd)"
 
 # ── 契约常量 ────────────────────────────────────────────────────────────

@@ -23,7 +23,11 @@ search() {
     | fzf --no-sort --prompt "﬿ " | sed 's/^[[:space:]]*[0-9]\+:[[:space:]]*//'
 }
 
+# 显式初始化。以前 ALL 只在 --all 分支设、SESSION 只在传参时设，
+# 其余情况靠「恰好没开 set -u」活着 —— 谁加上 set -u 就会崩在
+# `$ALL: unbound variable`。初始化是零成本的，不要依赖没开严格模式。
 ALL=false
+SESSION=""
 if [[ $# -eq 1 ]]; then
   case "$1" in
     --all)
