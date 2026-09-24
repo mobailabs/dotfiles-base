@@ -71,7 +71,7 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 |---|---|
 | check | 预检（macOS / git / 网络），唯一会硬性中止的一步 |
 | **一次性设置** | git 身份写 `~/.gitconfig.local`、`sudo -v` 预授权、ssh `Include` 自动加 |
-| Homebrew + 包 | 没 brew 就先用 `NONINTERACTIVE=1` 自动装（装前会再确认一次管理员权限），再装 `packages/macos/brew-*.txt` |
+| Homebrew + 包 | 没 brew 就先用 `NONINTERACTIVE=1` 自动装（装前会再确认一次管理员权限），再装 `packages/macos/brew-*.txt`；顺带修掉 brew 留下的「补全目录 group 可写」（否则每次开 shell 都有 oh-my-zsh 警告） |
 | oh-my-zsh / zsh 插件 | 装 `~/.oh-my-zsh` 与 brew 里没有的插件 |
 | 链接配置 | 19 个落点链到 `$HOME` |
 | tmux 插件 / mise | TPM 及插件；按 `mise/config.toml` 装工具 |
@@ -110,6 +110,7 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ├── scripts/
 │   └── macos/               ← 全部脚本（brew / 插件 / 链接 / mise / 对账 / 私有源状态）
 │       ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
+│       ├── brew-fix-completions-perms.zsh ← 修 brew 的补全目录权限（消除 oh-my-zsh 警告）
 │       ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
 │       ├── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
 │       ├── check.zsh, brew-install.zsh
@@ -291,6 +292,27 @@ Include ~/.ssh/config.local
 ```
 
 `Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
+
+### Homebrew 补全目录的权限
+
+用 Homebrew 官方脚本安装后，`$(brew --prefix)/share` 是 `drwxrwxr-x <你>:admin`
+—— group（admin）可写。而 oh-my-zsh 启动时会用 zsh 自带的 `compaudit` 审计
+补全目录，只要某个目录 group/other 可写就拒绝加载它、并**每次开 shell** 打印一段
+「Insecure completion-dependent directories detected」警告。
+
+这是 Homebrew 造成的、几乎每个官方脚本用户都会遇到的副作用，不是配置错误。
+`brew-install.zsh` 现在会**顺手修掉**（`chmod g-w,o-w`，只去写权限、不动 owner）：
+
+- 改动安全：brew 用**你的账户**操作，不依赖 group 写权限；实测 `brew doctor`
+  不报任何新问题，`brew update/install` 照常。
+- 幂等、失败不阻断（用 `compaudit` 自己判断该修哪些，修完再校验一遍）。
+- 起因与为什么不用硬编码路径，见 `scripts/macos/brew-fix-completions-perms.zsh` 顶部注释。
+
+手动重跑（可反复执行）：
+
+```sh
+zsh scripts/macos/brew-fix-completions-perms.zsh
+```
 
 ---
 
