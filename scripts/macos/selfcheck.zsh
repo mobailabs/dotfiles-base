@@ -387,6 +387,107 @@ print(",".join(sorted(req-set(d.keys()))))
   fi
 }
 
+# ── 8. macview 查询脚本的 JSON 合法（契约见 macview-contract.md 第二节）────
+#
+# 契约承诺「每个查询脚本的产出都由 selfcheck 校验」。这一节就是兑现它。
+# 每个脚本：跑它的 --json（只读）、要求是合法 JSON、要求必填顶层字段都在。
+#
+# 为什么这条重要：格式漂了若没人管，macview 会「一脸懵」地解析失败 ——
+# 而契约第四节写明，「漂移要报错，不要静默」。这里就是那个报错的地方。
+check_macview_query_json() {
+  section "macview 查询脚本产出合法 JSON"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "没有 python3，跳过 JSON 校验"
+    return
+  fi
+
+  # `脚本|必填顶层字段（逗号分隔）`
+  local -a specs=(
+    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,tools"
+    "link-status.zsh|version,checked_at,generated_by,targets,counts"
+    "repo-status.zsh|version,checked_at,generated_by,is_git"
+    "mise-status.zsh|version,checked_at,generated_by,mise_present,tools"
+  )
+
+  local spec name req impl json missing
+  for spec in "${specs[@]}"; do
+    name="${spec%%|*}"
+    req="${spec#*|}"
+    impl="$ROOT_DIR/scripts/macos/$name"
+    if [[ ! -f "$impl" ]]; then
+      bad "$name 不在（契约里承诺了它）"
+      continue
+    fi
+
+    json="$(zsh "$impl" --json 2>/dev/null)" || { bad "$name --json 执行失败"; continue; }
+
+    if ! printf '%s' "$json" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+      bad "$name --json 产出的不是合法 JSON"
+      continue
+    fi
+    ok
+
+    missing="$(REQ="$req" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+req = set(os.environ["REQ"].split(","))
+print(",".join(sorted(req - set(d.keys()))))
+' <<<"$json")"
+    [[ -z "$missing" ]] && ok || bad "$name 产出缺少顶层字段：$missing"
+  done
+
+  # brew-audit.zsh 的 --json 模式（给现有脚本加的那个）。
+  local audit="$ROOT_DIR/scripts/macos/brew-audit.zsh"
+  if [[ -f "$audit" ]]; then
+    json="$(zsh "$audit" --json 2>/dev/null)" || true
+    if [[ -z "$json" ]]; then
+      warn "brew-audit.zsh --json 无输出（可能 brew 不在），跳过"
+    elif printf '%s' "$json" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+      ok
+      missing="$(REQ="version,checked_at,generated_by,declared,installed,missing,duplicate,extra" python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+req = set(os.environ["REQ"].split(","))
+print(",".join(sorted(req - set(d.keys()))))
+' <<<"$json")"
+      [[ -z "$missing" ]] && ok || bad "brew-audit.zsh --json 缺少顶层字段：$missing"
+    else
+      bad "brew-audit.zsh --json 产出的不是合法 JSON"
+    fi
+  fi
+}
+
+# ── 9. shell 脚本里不许有 `local path`（会静默清空 PATH）─────────────────
+#
+# `path` 是 zsh 的保留变量，和 `PATH` 是同一个数组。在任何函数里写
+# `local path`（不带值）都会把 PATH 清空，于是该函数里之后所有
+# `command git` / `command brew` 都变成 `command not found` —— 而且**不报错**，
+# 只是结果静默变空（真踩过：repo-status.zsh 的 upstream 段变成 null）。
+#
+# 这条 lint 只查「local ... path ...」这种把 path 当局部变量的写法。
+check_no_local_path() {
+  section "没有把保留变量 path 当 local 用"
+
+  local f hit
+  local -a files=()
+  for f in "$ROOT_DIR"/scripts/**/*.zsh(N); do
+    [[ -f "$f" ]] && files+=("$f")
+  done
+  [[ -f "$ROOT_DIR/install.zsh" ]] && files+=("$ROOT_DIR/install.zsh")
+
+  local found=0
+  for f in "${files[@]}"; do
+    # 匹配 `local path` / `local -a path` / `local x path y` 这类声明里的 path 单词。
+    hit="$(grep -nE '^[[:space:]]*local([[:space:]]+-[A-Za-z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+path([[:space:]]|$)' "$f" 2>/dev/null || true)"
+    if [[ -n "$hit" ]]; then
+      bad "${f#"$ROOT_DIR"/} 把保留变量 path 声明成了 local（会清空 PATH）：$hit"
+      found=1
+    fi
+  done
+  (( found )) || ok
+}
+
 # ── 主流程 ──────────────────────────────────────────────────────────────
 main() {
   echo "仓库自检（只读，不联网）：$ROOT_DIR"
@@ -400,6 +501,8 @@ main() {
   check_private_slots
   check_syntax
   check_private_json
+  check_macview_query_json
+  check_no_local_path
 
   echo ""
   if (( _fail == 0 )); then

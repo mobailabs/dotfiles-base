@@ -105,14 +105,17 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ├── README.md                ← 本文件：装什么、怎么装、改哪里
 ├── shell.md                 ← shell 加载链的完整说明（PATH/环境变量/别名/函数）
 ├── private.md               ← 公开仓库↔私有源的接口契约（macview 读的状态格式）
+├── macview-contract.md      ← 公开仓库↔macview 的接口契约（查询脚本 + JSON 格式）
 ├── packages/                ← 要装什么（仓库只做 macOS，所以没有平台分层）
 │   └── macos/{brew-cli,brew-cask}.txt
 ├── scripts/
-│   └── macos/               ← 全部脚本（brew / 插件 / 链接 / mise / 对账 / 私有源状态）
+│   └── macos/               ← 全部脚本（brew / 插件 / 链接 / mise / 对账 / 状态查询）
 │       ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
 │       ├── brew-fix-completions-perms.zsh ← 修 brew 的补全目录权限（消除 oh-my-zsh 警告）
 │       ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
 │       ├── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
+│       ├── preflight.zsh / link-status.zsh / repo-status.zsh / mise-status.zsh
+│       │                    ← 只读状态查询（--json，给 macview；契约见 macview-contract.md）
 │       ├── check.zsh, brew-install.zsh
 │       └── prefs.d/         ← 系统偏好，一个文件一个主题
 ├── src/macos/config/        ← 配置源（只有 macOS，没有平台分层）
@@ -188,6 +191,9 @@ zsh install.zsh check
 - `private.md` 的槽位 ←→ `private-state.zsh` 里的 `SLOTS`
 - 所有 `.zsh` / `prefs.d/*.zsh` 的语法
 - `private-state.zsh` 产出的 JSON 合法
+- **每个 macview 查询脚本的 `--json` 合法**（`preflight` / `link-status` /
+  `repo-status` / `mise-status` / `brew-audit --json`；契约见 `macview-contract.md`）
+- **没有把保留变量 `path` 当 `local` 用**（`local path` 会清空 PATH，且不报错）
 
 **为什么要有它**：上面这些都是「改了 A 忘了 B → A 照跑、B 静默失效」的关系。
 没有自检时只能靠人肉眼对 —— 于是「我觉得对」就等于对。
@@ -237,27 +243,44 @@ DOTFILE_LINKS=(
 
 ## 和 macview 的关系
 
-[macview](https://github.com/mobailabs/macview) 是这套标准的图形界面：
-**看见差异 → 一键对齐**。
+[macview](https://github.com/mobailabs/macview) 是这套标准的图形界面。**它的定位是
+「脚本控制器」**：自己**不判断差异、不改磁盘** —— 只显示状态、按按钮调本仓库的脚本、
+展示结果。真正干活的是本仓库的脚本。
 
-它读的就是这个仓库 —— `packages/*.txt`、`scripts/macos/prefs.d/*.zsh`
-都是它的输入。所以这里的东西越规整，macview 能看见的就越多。
+两边靠 [`macview-contract.md`](macview-contract.md) 定义的接口交接。它规定：
 
-**私有源**这一块，两边靠 [`private.md`](private.md) 定义的状态契约交接：
-macview 读 `~/.config/dotfiles/private-state.json`，就能区分「没有私有源」
-（正常）和「有但没装好」（要修）。
+- **执行侧**：macview 会调哪些命令（`install.zsh` 的子命令、`brew-install.zsh` 等）
+- **状态侧**：本仓库提供哪些**只读查询脚本**（`--json`），以及 JSON 格式
+- **编辑侧**：macview 能改本仓库里的哪些源文件
+- **写死的结构**：macview 复制了一份「本仓库长什么样」，改本仓库时要同步改哪
 
-这个文件由 `scripts/macos/private-state.zsh` 产出，两个调用方：
+状态查询脚本（都是**只读、不联网、不落盘**的）：
 
-- `install.zsh` 的 prompt-once 步骤跑 `--write`（每次安装后刷新）
-- macview 需要时可跑 `--stdout`（只读，不落盘）
+| 脚本 | 回答什么 |
+|---|---|
+| `scripts/macos/preflight.zsh --json` | 仓库/私有仓库/要调的脚本/工具在不在 |
+| `scripts/macos/link-status.zsh --json` | 19 个落点各自的状态 |
+| `scripts/macos/brew-audit.zsh --json` | 包清单 vs 已装（对账） |
+| `scripts/macos/mise-status.zsh --json` | mise 声明 vs 实装 |
+| `scripts/macos/repo-status.zsh --json` | git 状态 |
+| `scripts/macos/private-state.zsh --stdout` | 私有源 5 个槽位（契约见 `private.md`） |
 
-**dotfiles 侧已实现；macview 侧的读取还没做**（见 `private.md` 的
-「macview 这一侧要怎么用」）。
+这些脚本的 JSON 产出**都由 `selfcheck.zsh` 校验**（跑 `zsh install.zsh check`）。
 
-落点清单是**两边各维护一份**：`link-dotfiles.zsh` 的 `DOTFILE_LINKS` 是命令行版
-依据，macview 自己另存一份。两边可能漂移，但漂移**可检测** —— 仓库里有源、
-`$HOME` 里没链接，对账时会报出来，不是静默失效。
+**偏好（`prefs.d`）的状态暂不提供** —— `defaults write` 是文本、`defaults read` 是值，
+要把两者对上只能解析 `.zsh`，容易漂移成假消息。这一版只提供「跑 `prefs`」按钮，
+不显示「已应用」的绿勾。理由详见 `macview-contract.md` 第 2.7 节。
+
+**私有源**那部分用 [`private.md`](private.md) 的状态契约：macview 读
+`~/.config/dotfiles/private-state.json`，就能区分「没有私有源」（正常）和
+「有但没装好」（要修）。这个文件由 `scripts/macos/private-state.zsh` 产出，
+`install.zsh` 的 prompt-once 步骤跑 `--write` 刷新，macview 需要时跑 `--stdout` 只读。
+
+**dotfiles 侧已实现；macview 侧的读取还没做**（macview 正在按新定位重做，
+设计见它自己仓库的 `docs/design/2026-09-24-重新设计-脚本控制器.md`）。
+
+落点清单：**macview 不再自己另存一份**，而是调 `link-status.zsh`，后者
+**从 `link-dotfiles.zsh` 的 `DOTFILE_LINKS` 读** —— 落点声明只有一处真相。
 
 两者不冲突：`install.zsh` 是命令行版本，macview 是图形版本，改的是同一批文件。
 
