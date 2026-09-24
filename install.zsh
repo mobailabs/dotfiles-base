@@ -27,13 +27,14 @@ Options（用于 base，实现零交互）:
 ## 全自动怎么用
 
   zsh install.zsh
-    开头**一次性**问完 git 身份 + 管理员密码，之后零交互，人可以走开。
+    开头问一次 git 身份 + 管理员密码；之后基本不用管，
+    但需要管理员权限的步骤若授权已过期，会**再问一次**（会等你输入）。
 
   zsh install.zsh --name "你的名字" --email "you@example.com"
-    完全不提问（sudo 若已预授权则全程无交互）。
+    省掉 git 身份的两个提问；sudo 仍可能需要输一次。
 
   GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
-    纯环境变量驱动。
+    纯环境变量驱动（同样不保证免 sudo 密码）。
 
 后续所有定制通过编辑 src/**/config/*、packages/*.txt 完成。
 EOF
@@ -69,8 +70,12 @@ _SUDO_KEEPALIVE_SLEEPFILE=""
 #
 # 为什么需要：macOS 默认 timestamp_timeout 是 **5 分钟**，而完整 base 流程
 # （装几十个 cask + mise 工具）动辄十几分钟到半小时。只在开头 `sudo -v` 一次
-# 是不够的 —— 时间戳过期后，后面的 prefs（Touch ID for sudo）会**再次弹密码**，
-# 人就守在旁边等着了，「走开」就失败。
+# 是不够的 —— 时间戳过期后，后面的 prefs（Touch ID for sudo）会**再次弹密码**。
+#
+# ⚠️ 但它**只是尽力而为，不是保证**。sudo 的 timestamp 默认按 tty（无 tty 时按
+# ppid）记录，后台 subshell 与各步骤的归属可能对不上，于是它可能**从来就刷不动**。
+# 这不是错误 —— 它失败时完全安静（见函数内注释）。真正兜底的是：
+# 每个需要权限的地方各自就近 `sudo -v`。
 #
 # 所以：每 60 秒 `sudo -n true` 刷一次（-n = 不提问；过了期就静默失败、不卡住）。
 # 全部结束时 kill 掉。用 `sudo -n`（而非 `sudo -v`）保证后台进程**永远不会
@@ -96,26 +101,27 @@ start_sudo_keepalive() {
   rm -f "$_SUDO_KEEPALIVE_SLEEPFILE" 2>/dev/null || true
 
   (
-    # 失败几次才真正放弃 —— 不要一次 `sudo -n` 失败就静默退出。
+    # ⚠️ 失败时**静默**，不报错。
     #
-    # 为什么：`sudo -n true` 失败的唯一原因就是缓存过期。若此刻直接 exit，
-    # keep-alive 就没了，之后每个需要 sudo 的步骤都会重新弹密码（或失败）。
-    # 用短退避重试几次，缓存回来了就继续 —— 大幅降低「跑一半又开始问密码」。
+    # 为什么：这个后台循环只是**优化** —— 它让后面的步骤不用再输密码。
+    # 它失效的后果仅仅是「可能再问一次密码」，**不是**安装出错。
+    # 以前这里失败时会打两条 `! sudo 预授权已过期…` / `! 停止刷新 sudo…`，
+    # 结果把「一个可有可无的优化没生效」渲染成「出事了」，吓到用户 ——
+    # 实测（macOS 26）后台 subshell 的 sudo timestamp 与前台未必共享，
+    # 于是它经常刷不动。**报错比失效更有害**，所以改成完全安静。
+    #
+    # 真正需要 sudo 的地方靠两条保证，不靠这个循环：
+    #   1. 需要 sudo 的步骤会**自己弹密码**（只要终端在，就会等你输入，不会卡死）
+    #   2. brew-bootstrap / prefs 前会**主动补一次** sudo（见各自的注释）
     fails=0
     while true; do
       if sudo -n true 2>/dev/null; then
         fails=0
       else
         fails=$((fails + 1))
-        if (( fails == 3 )); then
-          echo "  ! sudo 预授权已过期，且刷新失败；需要 sudo 的步骤可能失败。" >&2
-        fi
-        # 连续 10 次刷不回来（约 5 分钟）就放弃 —— 免得永远空转。
-        if (( fails >= 10 )); then
-          echo "  ! 停止刷新 sudo（连续失败 10 次）。" >&2
-          exit 0
-        fi
-        # 退避：15s → 30s → 30s …（比 60s 更勤，缓回来了才睡得长）
+        # 连续 10 次刷不回来就放弃 —— 免得永远空转。安静退出，不打扰用户。
+        (( fails >= 10 )) && exit 0
+        # 退避 15s（比平时更勤，缓存若能回来就尽快续上）。
         sleep 15 &
         echo $! > "$_SUDO_KEEPALIVE_SLEEPFILE"
         wait $! 2>/dev/null || exit 0
@@ -127,7 +133,7 @@ start_sudo_keepalive() {
     done
   ) &
   _SUDO_KEEPALIVE_PID=$!
-  echo "sudo 预授权已保持（后台每 60s 刷新）。"
+  echo "sudo 预授权已保持（后台尽力刷新；失效也不影响安装）。"
 }
 
 # keep-alive 里「当前 sleep」的 PID 文件路径。
@@ -203,16 +209,24 @@ run_base() {
   "$SCRIPT_DIR/scripts/macos/check.zsh" || exit 1
 
   # 把所有需要人参与的事情**集中到这里一次问完**（git 身份、sudo 预授权、
-  # ssh include）。之后每一步都是零交互 —— 这样你可以敲一条命令然后走开，
-  # 不用守在旁边等某个 sudo 提示。
+  # ssh include）。之后绝大多数步骤零交互 —— 这样你可以敲一条命令然后走开。
+  #
+  # ⚠️ 但「之后完全不用再管」**不是保证**：sudo 授权 5 分钟就过期，而且
+  # 后台 keep-alive 未必刷得动（原因见 start_sudo_keepalive）。真正需要
+  # 权限的步骤（brew 装前、prefs 前）会**就地在有终端时弹一次密码**——
+  # 它会等你输入，不会悄悄卡住。所以「走开」的最佳前提是别离开太久，
+  # 或者接受回来时按一下授权。
   #
   # 它最后还会写一份「私有源状态」给 macview 读（契约见 private.md）——
   # 之所以放这里，是因为此刻身份和 ssh 都刚处理完，记下的才是真实状态。
   run_step "一次性设置（身份 / 权限 / ssh）" \
     "$SCRIPT_DIR/scripts/macos/prompt-once.zsh" "${INSTALL_ARGS[@]}"
 
-  # prompt-once 可能刚做了 sudo 预授权。装包动辄十几分钟，而时间戳默认
-  # 5 分钟就过期 —— 开个后台循环持续刷新，否则 prefs 那步会重新弹密码。
+  # 开一个后台循环尽力刷新 sudo（装包动辄十几分钟，时间戳默认 5 分钟就过期）。
+  #
+  # ⚠️ 这只是**优化**，不是正确性保证 —— 它可能因 ppid / tty 的 timestamp
+  # 归属问题刷不动（实测 macOS 26 会）。所以它**失败时完全安静**，绝不报错；
+  # 真正需要权限的地方各自就近确认（brew-bootstrap、prefs 前）。
   # 无论怎么退出（成功 / 失败 / Ctrl-C）都要收掉这个后台进程，否则它会
   # 一直留在后台每 60s 跑一次 sudo。EXIT 管正常与错误退出，INT/TERM 走
   # on_interrupt（先清理再退出）。
@@ -235,6 +249,16 @@ run_base() {
   run_step "链接配置文件"           "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh"
   run_step "tmux 插件（TPM）"       "$SCRIPT_DIR/scripts/macos/tmux-plugins-install.zsh"
   run_step "mise 工具"             "$SCRIPT_DIR/scripts/macos/mise-setup.zsh"
+
+  # prefs 里 sudo_touchid 要管理员权限。**在这里主动补一次授权** ——
+  # 不指望开头那次（5 分钟就过期）也不指望后台 keep-alive（它可能刷不动，
+  # 见 start_sudo_keepalive 的注释）。
+  #
+  # tty 在就会就地弹一次密码（**会等你输入，不会卡死**）；非交互 / 无终端时
+  # 立刻失败 —— 那就跳过，prefs 自己会优雅处理缺权限的情况。
+  # 2>/dev/null：不把 sudo 的「a terminal is required」噪音打到用户面前。
+  sudo -v 2>/dev/null || true
+
   # 偏好可能要求 sudo 密码；你按了取消也不该让前面装好的东西白费。
   run_step "macOS 系统偏好"         "$SCRIPT_DIR/scripts/macos/prefs.zsh"
 

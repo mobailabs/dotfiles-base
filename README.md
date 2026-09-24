@@ -62,11 +62,11 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 |---|---|
 | check | 预检（macOS / git / 网络），唯一会硬性中止的一步 |
 | **一次性设置** | git 身份写 `~/.gitconfig.local`、`sudo -v` 预授权、ssh `Include` 自动加 |
-| Homebrew + 包 | 没 brew 就用 `NONINTERACTIVE=1` 自动装，再装 `packages/*/brew-*.txt` |
+| Homebrew + 包 | 没 brew 就先用 `NONINTERACTIVE=1` 自动装（装前会再确认一次管理员权限），再装 `packages/macos/brew-*.txt` |
 | oh-my-zsh / zsh 插件 | 装 `~/.oh-my-zsh` 与 brew 里没有的插件 |
 | 链接配置 | 19 个落点链到 `$HOME` |
 | tmux 插件 / mise | TPM 及插件；按 `mise/config.toml` 装工具 |
-| macOS 偏好 | 9 个 `prefs.d`（sudo 已在开头预授权，不会再问） |
+| macOS 偏好 | 9 个 `prefs.d`；这步前会再补一次 `sudo`（失效时让你再输一次，不会卡住） |
 
 **单步失败不会中断**：每步独立容错，最后汇总失败项并以非 0 退出。
 所以就算某个 cask 装不上，配置链接和系统偏好照样完成。
@@ -292,8 +292,8 @@ Include ~/.ssh/config.local
 | brew / 所有 CLI / cask | ✅ | `NONINTERACTIVE=1`；少数 cask 自身仍可能要密码 |
 | 19 个配置落点 | ✅ | |
 | oh-my-zsh / zsh 插件 / tmux 插件 / mise | ✅ | |
-| macOS 偏好 | ✅ | sudo 已在开头预授权并后台保持 |
+| macOS 偏好 | ⚠️ | 需要 sudo；开头授权后**可能**还要再输一次（见下） |
 | git 身份 | ✅ | 开头问一次，或用 `--name/--email`、环境变量 |
 | ssh `Include` | ✅ | 自动插入 |
-| **sudo 密码本身** | ❌ | 只能开头输一次；无法凭空获得 |
+| **sudo 密码** | ❌ | 需要时**一定会等你输入**（不会卡死）；失效就再输一次 |
 | **私有源 / token** | ❌ | 不在本仓库，需用户自备（可以是私有 git 仓库 / 目录，将来可接 macview 云服务；见 `private.md`）
