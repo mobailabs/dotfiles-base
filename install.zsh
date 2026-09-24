@@ -18,10 +18,11 @@ Commands:
   check            Repo self-check: cross-references & syntax (read-only)
   help             Show this help
 
-Options（用于 base，实现零交互）:
+Options（用于 base，减少交互）:
   --name  <名字>   git 提交名字（跳过交互提问）
   --email <邮箱>   git 提交邮箱（跳过交互提问）
-  --yes, -y        不提问，全部取参数/环境变量/已有配置
+  --yes, -y        不提问「可选项」（git 名字/邮箱等），全部取参数/环境变量/已有配置
+                   注意：不豁免管理员密码 —— 若需要装 Homebrew 且无缓存，仍会问一次
                    适合脚本化、CI、远程 curl | zsh
 
 ## 全自动怎么用
@@ -72,10 +73,12 @@ _SUDO_KEEPALIVE_SLEEPFILE=""
 # （装几十个 cask + mise 工具）动辄十几分钟到半小时。只在开头 `sudo -v` 一次
 # 是不够的 —— 时间戳过期后，后面的 prefs（Touch ID for sudo）会**再次弹密码**。
 #
-# ⚠️ 但它**只是尽力而为，不是保证**。sudo 的 timestamp 默认按 tty（无 tty 时按
-# ppid）记录，后台 subshell 与各步骤的归属可能对不上，于是它可能**从来就刷不动**。
-# 这不是错误 —— 它失败时完全安静（见函数内注释）。真正兜底的是：
-# 每个需要权限的地方各自就近 `sudo -v`。
+# ⚠️ 它**只是尽力而为，不是保证**，而且原因我并未完全证实：sudo 默认按 tty
+# （无 tty 时按 ppid）记录 timestamp，后台 subshell 的归属可能对不上，于是它
+# 可能刷不动；但真机日志里 brew-bootstrap 的 sudo 成功、这个循环却失败，
+# 两种解释都说得通，我无法唯一确定。所以这里不依赖任何机制假设 ——
+# 它失败时完全安静（见函数内注释），真正兜底的是：
+#   · 需要 sudo 的步骤**自己会弹密码**（见下一段）
 #
 # 所以：每 60 秒 `sudo -n true` 刷一次（-n = 不提问；过了期就静默失败、不卡住）。
 # 全部结束时 kill 掉。用 `sudo -n`（而非 `sudo -v`）保证后台进程**永远不会
@@ -107,12 +110,11 @@ start_sudo_keepalive() {
     # 它失效的后果仅仅是「可能再问一次密码」，**不是**安装出错。
     # 以前这里失败时会打两条 `! sudo 预授权已过期…` / `! 停止刷新 sudo…`，
     # 结果把「一个可有可无的优化没生效」渲染成「出事了」，吓到用户 ——
-    # 实测（macOS 26）后台 subshell 的 sudo timestamp 与前台未必共享，
-    # 于是它经常刷不动。**报错比失效更有害**，所以改成完全安静。
+    # 真机实测就是这样：什么都没坏，却看起来像坏了。**报错比失效更有害**，
+    # 所以改成完全安静。
     #
-    # 真正需要 sudo 的地方靠两条保证，不靠这个循环：
-    #   1. 需要 sudo 的步骤会**自己弹密码**（只要终端在，就会等你输入，不会卡死）
-    #   2. brew-bootstrap / prefs 前会**主动补一次** sudo（见各自的注释）
+    # 真正兜底的不是这个循环，而是：需要 sudo 的步骤**自己会弹密码**
+    # （只要终端在，就会等你输入，不会卡死）。
     fails=0
     while true; do
       if sudo -n true 2>/dev/null; then
@@ -250,13 +252,20 @@ run_base() {
   run_step "tmux 插件（TPM）"       "$SCRIPT_DIR/scripts/macos/tmux-plugins-install.zsh"
   run_step "mise 工具"             "$SCRIPT_DIR/scripts/macos/mise-setup.zsh"
 
-  # prefs 里 sudo_touchid 要管理员权限。**在这里主动补一次授权** ——
-  # 不指望开头那次（5 分钟就过期）也不指望后台 keep-alive（它可能刷不动，
-  # 见 start_sudo_keepalive 的注释）。
+  # prefs 里 sudo_touchid 要用管理员权限写 /etc/pam.d/sudo_local。
   #
-  # tty 在就会就地弹一次密码（**会等你输入，不会卡死**）；非交互 / 无终端时
-  # 立刻失败 —— 那就跳过，prefs 自己会优雅处理缺权限的情况。
-  # 2>/dev/null：不把 sudo 的「a terminal is required」噪音打到用户面前。
+  # 这里补一次 `sudo -v`，但要说清楚它**不是功能性前提**：真正执行 sudo 的是
+  # 孙进程（install.zsh → prefs.zsh → sudo_touchid.zsh → sudo install），
+  # 而 `sudo -v` 只在**本进程**里跑。若 timestamp 按 tty 记，同一终端下是共享的、
+  # 这次就有效；若按 ppid 记，则不共享、这次等于白做 —— 我无法确证是哪一种
+  # （见 start_sudo_keepalive 的注释）。
+  #
+  # 所以保留它只有一个理由：把「需要密码」提示到**专门的权限时刻**，
+  # 而不是混在「应用偏好」的输出里、让人看不懂在问什么。
+  # 真正的兜底是 sudo_touchid 自己会弹密码（有终端就会等你输入，不会卡死）。
+  #
+  # 2>/dev/null：不把「a terminal is required」这类噪音打到用户面前；
+  # 密码提示走 /dev/tty，不受影响，照样看得见。
   sudo -v 2>/dev/null || true
 
   # 偏好可能要求 sudo 密码；你按了取消也不该让前面装好的东西白费。
