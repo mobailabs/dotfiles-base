@@ -56,19 +56,90 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 
 这些是**会改动磁盘**的入口。macview 按按钮 = 调它们。
 
-| macview 的动作 | 调的命令 | 现状 |
-|---|---|---|
-| 一键配置(全套) | `zsh install.zsh` | ✅ 已有 |
-| 只链接配置 | `zsh install.zsh link` | ✅ 已有 |
-| 只应用偏好 | `zsh install.zsh prefs` | ✅ 已有 |
-| 装软件(brew+cask) | `zsh scripts/macos/brew-install.zsh` | ✅ 已有 |
-| 对账(只读) | `zsh install.zsh audit` | ⚠️ 见第二节 |
-| 仓库自检(只读) | `zsh install.zsh check` | ✅ 已有 |
-| 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | ✅ 已有 |
-| 链私有 overlay | **缺** —— 见 §3.4 | ❌ 要新增 |
+| macview 的动作 | 调的命令 | tty | 退出码 | 现状 |
+|---|---|---|---|---|
+| 一键配置(全套) | `zsh install.zsh` | **要** | 0 / 1 | ✅ 已有 |
+| 只链接配置 | `zsh install.zsh link` | 不要 | 0 | ✅ 已有 |
+| 只应用偏好 | `zsh install.zsh prefs` | **要** | 0 / 1 | ✅ 已有 |
+| 装软件(brew+cask) | `zsh scripts/macos/brew-install.zsh` | **要** | 0 / 1 | ✅ 已有 |
+| 对账(只读) | `zsh install.zsh audit` | 不要 | **0 / 1** | ✅ 已有 |
+| 仓库自检(只读) | `zsh install.zsh check` | 不要 | 0 / 1 | ✅ 已有 |
+| 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 通常不要 | 0 / 1 | ✅ 已有 |
+| 链私有 overlay | **缺** —— 见 §3.4 | 不要 | ? | ❌ 要新增 |
 
 **契约**:上表 ✅ 的命令**以后不改名、不改语义**。
 改了 macview 会报「脚本不在」(启动检测),不会静默。
+
+### 1.1 tty 列 —— 这是执行侧最容易做错的一件事
+
+`prompt-once.zsh:71` 用 `[[ -t 0 ]]` 判断「有没有终端」:
+
+```zsh
+interactive=1
+[[ -t 0 ]] || interactive=0      # 没有 tty → 完全跳过提问
+```
+
+**macview 用 `Process` 起的子进程默认没有 tty**(fd 0 不是终端)。
+没有 tty 时会发生什么,**取决于命令**:
+
+| 命令 | 没 tty 时的实际行为 | 危害 |
+|---|---|---|
+| `install.zsh`(base) | prompt-once **静默跳过** git 身份、sudo 预授权 | **身份没配也不说**,之后 commit 全失败 |
+| `install.zsh prefs` | `scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 报「a terminal is required」→ 该步失败 | 报错,但**原因会被淹没**在输出里 |
+| `brew-install.zsh` | 装 Homebrew 要密码 → 无 tty 时失败 | 装不上 |
+| 查询类(`*--json`) | 完全不受影响(它们本来就不提问) | 无 |
+
+所以规则是:
+
+> **标了「tty 要」的命令,macview 必须给它在「有控制终端」的上下文里跑。**
+
+macview 侧的实现选择(本次已定,**A**):**给子进程分配 PTY**。
+不是「丢给 Terminal.app」,也不是「不处理」。
+
+#### 为什么是 PTY 而不是别的
+
+| 方案 | 为什么不选 |
+|---|---|
+| 直接 `Process` + 继承 stdin | 从 GUI 起时 fd 0 是 `/dev/null`,行为和不指定一样 —— 见下 |
+| 继承 stdin + 不指定 | 旧代码踩过:从终端跑 CLI 时是 tty、从 app 跑时是 `/dev/null`,**同一命令两处行为不同**,表现为「偶尔挂住」,极难查(`SoftwareApply.swift:122` 的注释记着) |
+| `standardInput = /dev/null`(旧代码的做法) | **不挂住,但也不提问** —— 需要密码的步骤直接失败。旧代码只是回避了问题 |
+| 丢给 Terminal.app | 用户能看见,但 macview **看不到输出、拿不到退出码**,「实时显示结果」这条就废了 |
+| **PTY**(选它) | 子进程以为自己在一个真终端里:`[[ -t 0 ]]` 真、`sudo` 能弹密码、macview 又能读全部输出 |
+
+#### macview 侧怎么开 PTY(实现要点,给 macview 的实现者)
+
+macOS 有现成的原语(`/usr/include/util.h`、`sys/ttycom.h`,已在 SDK 里确认):
+
+- `openpty(&master, &slave, ...)` —— 开一对 pty。
+- `posix_spawn` —— **不要用 `forkpty`**。
+  理由:Foundation 的 GUI App 是**多线程**的;`fork()` 之后子进程只能调
+  async-signal-safe 的函数,而 `forkpty` 之后通常要立刻 `exec`,
+  中间那一步在 Swift 里很容易踩到不可 fork 的东西。`posix_spawn` 没有这个约束。
+- 把 `slave` 作为子进程的 stdin/stdout/stderr;`master` 由 macview 读。
+- 子进程要 `setsid()`(或 `posix_spawn` 的 `POSIX_SPAWN_SETSID`)成为会话首进程,
+  再让 pty 成为控制终端(`TIOCSCTTY`)—— 否则 `sudo` 找不到 `/dev/tty`。
+- 读 `master` 时**要处理 `\r\n`**:pty 会把 `\n` 翻译成 `\r\n`,直接显示会出现「每行多一个 ^M」。
+- 用户输入密码时回显关掉了,但 macview 仍要把 master 上的字节**转给用户**看
+  (至少要把密码提示显示出来)。
+
+⚠️ **PTY 下没有超时这回事。** 人在输密码,不能掐。所以需要 PTY 的步骤
+**不设自动超时**(或者给一个很长的、以「人在打字」为前提的值 ——
+旧代码用的是 5 分钟,见 `SoftwareApply.swift:275`)。
+
+### 1.2 退出码列 —— 「有缺失」不是「崩了」
+
+⚠️ **`brew-audit.zsh` 有缺失时退出码是 1**(`brew-audit.zsh:331`),
+**这是正常的业务结果,不是错误**。
+
+macview **不能**把「非零 = 出错」当通则。判据是:
+
+- **`--json` 类命令**:看 JSON 内容(有没有 `missing`),**不看退出码**。
+  退出码只用来区分「脚本真的没跑起来」和「跑起来了」。
+- **动作类命令**(`install.zsh` 等):退出码 0 = 全部成功,
+  非零 = 有步骤失败(输出里会列)。这时才报错。
+
+这条必须写死,否则「有 3 个包没装」会在界面上显示成「对账脚本崩了」——
+用户会去修一个根本没坏的东西。
 
 ---
 
@@ -105,8 +176,11 @@ macview 启动时调一次。回答「这台机器能不能开工」。
   "dotfiles": { "state": "present", "path": "/Users/you/dotfiles" },
   "private":  { "state": "absent",  "path": "/Users/you/private-dotfiles" },
   "scripts": [
-    { "name": "install.zsh",       "path": "install.zsh",                "state": "present" },
-    { "name": "brew-install.zsh",  "path": "scripts/macos/brew-install.zsh", "state": "absent" }
+    { "name": "install.zsh",      "path": "install.zsh",                    "state": "present" },
+    { "name": "brew-install.zsh", "path": "scripts/macos/brew-install.zsh", "state": "absent" }
+  ],
+  "package_lists": [
+    { "name": "brew-cli.txt", "path": "packages/macos/brew-cli.txt", "state": "present" }
   ],
   "tools": { "git": "present", "homebrew": "present" }
 }
@@ -117,6 +191,11 @@ macview 启动时调一次。回答「这台机器能不能开工」。
 - **不查网络、不查磁盘**(旧文档 §4 的时机表:日常看的时候一次网络探测都不该发)。
 - 「脚本在不在」单列,是因为**它会变** —— 你在仓库里重命名一个脚本,
   macview 得**报出来**,而不是「点了没反应」。
+- `package_lists` 查的是**软件页和配置页依赖的文件**(两份 brew 清单 + `mise/config.toml`)。
+  它们不在时那一页会是空的 —— 而「空」和「仓库坏了」在界面上长得一样,所以单独报。
+- `tools` **自带 PATH 增强**(脚本内部 `source brew-env.zsh`)—— 因为 GUI App 的
+  PATH 是 launchd 的最小值,不补会对着一台装好 brew 的机器**误报「没装」**。
+  macview 侧不用为这个查询再自己补 PATH。
 - 当前 `tools` 只报 `git` 和 `homebrew`。**没报 `command_line_tools`** ——
   那个要起 `xcode-select` 且会超时,属于「动手前才查」,不该在启动时查。
   真要补,加在 macview 的「点按钮前」路径里。
@@ -260,10 +339,37 @@ macview 能编辑文本文件。**只改本仓库里的源文件**,不改 `$HOME
 **关键纪律**:改完**不等于生效**。用户改了 `brew-cli.txt` 要**点「应用」**
 让脚本去装。界面必须让人看见「改了但没应用」这个中间态。
 
+### 3.1 commit —— 唯一一个「macview 自己动手写磁盘」的例外
+
+⚠️ **本仓库没有任何 git 辅助脚本**(`scripts/` 下没有 commit/add/push 逻辑),
+而 `repo-status.zsh` 只能报「哪些文件脏」、**报不出 diff**。
+
+所以 commit 那一页,macview 要**自己拼 `git add` / `git commit` / `git push`**。
+这和「macview 只调脚本、不自己动手」的定位**是冲突的** —— 必须把它当成
+**明写的例外**,并配纪律,否则它会变成一条没人管的旁路。
+
+macview 侧的纪律(照 DOTFILES 的既有规矩):
+
+1. **commit 前显示要改什么**(`git status` + diff),不给人看就不提交。
+2. **push 单独一步**,不跟 commit 捆在一起 —— push 是真正不可逆的那个。
+3. **不在本仓库没有任何改动时提交**(避免空提交)。
+4. 提交信息由用户写,macview 不自动生成。
+
+**为什么不在本仓库加个 commit 子命令**:加也可以,但那会变成一个
+「什么都干」的假 installer 子命令;git 是标准工具,macview 用标准工具没有错。
+**纪律在 macview 侧,不在命令侧。**
+
+### 3.2 打开文件 —— 编辑的兜底
+
+除了内置编辑器,macview 还应能用**默认 App / 终端**打开某个源文件
+(比如 `open -t ~/dotfiles/packages/macos/brew-cli.txt`)。
+这条不用写进契约 —— 它不碰 dotfiles 的接口。但设计文档里要有
+(macview 设计文档 §2.1 的「打开」)。
+
 ### §3.4 缺的那条:私有 overlay 的独立入口
 
-现状:私有 overlay 的三个落点(`~/.gitconfig.local` / `~/.zshrc.local` /
-`~/.envconfig.local` / `~/.ssh/config.local` / `~/.aliases`,共 5 个槽位)
+现状:私有 overlay 的**五个落点**(`~/.gitconfig.local` / `~/.zshrc.local` /
+`~/.envconfig.local` / `~/.ssh/config.local` / `~/.aliases`,也是五个槽位)
 **没有独立的公开入口** —— `link-private.zsh` 在私有仓库里,macview 够不着。
 
 **契约要补**:公开仓库提供一个稳定的入口,让 macview 能单独触发「链私有 overlay」。
@@ -292,9 +398,10 @@ macview 写死的东西:
 | 写死什么 | 本仓库对应 |
 |---|---|
 | 入口脚本名(`install.zsh` + 子命令) | `install.zsh:325` |
-| 要调的脚本路径 | `scripts/macos/*.zsh` |
+| 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1) |
+| **每个命令要不要 tty** | 契约 §1 表格的 `tty` 列 |
 | 落点数(19) | `link-dotfiles.zsh:34` 的 `DOTFILE_LINKS` |
-| 私有源 5 个槽位 | `private.md:194` |
+| 私有源 5 个落点/槽位 | `private.md:194` |
 | 包清单路径 | `packages/macos/brew-*.txt` |
 | prefs 主题数(9) | `prefs.zsh:39` 的 `PREF_ORDER` |
 
@@ -304,10 +411,12 @@ macview 写死的东西:
 |---|---|---|
 | 重命名脚本 | 启动检测报「脚本不在」 | ✅ 会报错 |
 | 改落点(加一行) | 落点查询脚本从 `DOTFILE_LINKS` 读 —— **自动跟上** | ✅ 不漂移 |
-| 加一个 `prefs.d` 主题 | macview 的偏好分组**看不见** | ❌ **会静默漂移** |
+| 改某个命令要不要 tty | 该问密码的步骤静默失败(或凭空挂住) | ❌ **会静默漂移** |
+| 加一个 `prefs.d` 主题 | 不影响(本版不做偏好状态,没有东西可漂) | ✅ 无影响 |
 
-最后一行是**唯一会静默漂移的地方** —— 它和 §2.7 那个「偏好状态」问题是同一个。
-处理方式见 §2.7(倾向:这一版不做偏好状态,也就不存在这个漂移)。
+「要不要 tty」那一行是**唯一会静默漂移的地方** —— 所以它必须和
+§1 的表格**同时改**。改了契约不改 macview,macview 会用错的路径跑命令
+(该给 PTY 的没给 → 静默跳过提问)。
 
 ---
 
@@ -317,9 +426,9 @@ macview 写死的东西:
 
 | 时机 | 查什么 | 不查什么 |
 |---|---|---|
-| **启动 / 打开主窗口** | 前提检查、落点状态 | ❌ 网络、磁盘 |
+| **启动 / 打开主窗口** | 前提检查、落点状态 | ❌ 网络、磁盘、CLT |
 | **显示某一页** | 那一页需要的(懒查) | ❌ 其余 |
-| **点了「动手」按钮** | 网络 + 磁盘(要下载才查) | — |
+| **点了「动手」按钮** | 网络 + 磁盘(要下载才查);要装东西前查**命令行工具**(`xcode-select`,会超时) | — |
 
 三条约束:
 
@@ -333,11 +442,20 @@ macview 写死的东西:
 ## 六、这份契约没定的东西(留给实施)
 
 - **各查询脚本的具体字段**会随实施微调(只要守上面 4 条设计原则)。
-- **偏好状态**(§2.7)—— 倾向不做,待定。
+- **偏好状态**(§2.7)—— **已定:这一版不做**,只给「跑 prefs」按钮。
+  将来若要做,唯一不漂移的做法是让每个 `prefs.d/*.zsh` 自己报告键名。
 - **撤回**(macview 设计文档 §5:macview 不自建撤回。如果将来要做,
   在本仓库加 `install.zsh restore`,读 `link-dotfiles.zsh` 自己的备份)。
 - **`.envconfig.local` 的归宿**(`docs/design/2026-09-22-dotfiles-整理盘点.md` §3.3
   记的老问题)—— 那是本仓库自己的事,不是 macview 接口。
+
+### 本次新拍板的两条(从「没定」移过来)
+
+- **tty / PTY**(§1.1)—— 已定:macview 给需要终端命令开 **PTY**。
+  `ScriptRunner` 要有 `runCaptured`(无 tty)和 `runInteractive`(PTY)两条路径。
+- **commit**(§3.1)—— 已定:macview 自己调 git,但配明确纪律
+  (先给人看 diff、push 单独一步、空改动不提交)。这是「只调脚本」定位的
+  唯一明写例外。
 
 ---
 

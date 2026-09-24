@@ -79,6 +79,14 @@ fi
 #
 # ⚠️ 这份清单必须和 macview 的 `DotfilesLayout` 保持一致。改一处要改两处。
 #    它是「结构写死」那份描述的仓库侧副本。
+#
+# 覆盖范围：契约 §1「执行侧」表格里所有 macview 会调的东西。
+#   · install.zsh            —— 一键配置 / link / prefs / audit / check 的入口
+#   · brew-install.zsh       —— 装软件
+#   · mise-setup.zsh         —— 装开发环境
+#   · link-dotfiles.zsh, prefs.zsh, brew-audit.zsh
+#   · selfcheck.zsh          —— install.zsh check 实际调的就是它
+#   · private-state.zsh      —— 私有源状态（macview 直接调 --stdout）
 SCRIPTS=(
   'install.zsh|install.zsh'
   'scripts/macos/brew-install.zsh|brew-install.zsh'
@@ -86,7 +94,18 @@ SCRIPTS=(
   'scripts/macos/prefs.zsh|prefs.zsh'
   'scripts/macos/mise-setup.zsh|mise-setup.zsh'
   'scripts/macos/brew-audit.zsh|brew-audit.zsh'
+  'scripts/macos/selfcheck.zsh|selfcheck.zsh'
   'scripts/macos/private-state.zsh|private-state.zsh'
+)
+
+# 包清单 —— 「软件」页整页都依赖它们。它们不在，那一页就是空的，
+# 而「空」和「仓库坏了」在界面上长得一样。所以也查。
+#
+# 每行：`仓库内相对路径|给用户看的名字`
+PACKAGE_LISTS=(
+  'packages/macos/brew-cli.txt|brew-cli.txt'
+  'packages/macos/brew-cask.txt|brew-cask.txt'
+  'src/macos/config/mise/config.toml|mise/config.toml'
 )
 
 # ── JSON 工具（照抄 private-state.zsh，理由见那里）──────────────────────
@@ -124,7 +143,17 @@ probe_path() {
   fi
 }
 
-# 命令在不在 PATH 里（macview 侧会先 enhPath，这里只管当前 PATH）。
+# 命令在不在 PATH 里。
+#
+# ⚠️ 这里**先补 PATH**再判 —— GUI App 的 PATH 是 launchd 的最小值
+# （不含 /opt/homebrew/bin），不补的话会对着一台装好 brew 的机器报
+# 「没装 Homebrew」，那是个**假消息**（macview 设计文档 §6 把
+# `enrichedPath` 列为「关键」就是因为它）。
+#
+# brew-env.zsh 是仓库里现成的补 PATH 逻辑（它本来就是为这类场景写的）。
+# 它在非 macOS 上会早退，所以这个脚本前面的 Darwin 检查已经兜住了。
+source "$ROOT_DIR/scripts/macos/brew-env.zsh" 2>/dev/null || true
+
 probe_command() {
   if command -v "$1" >/dev/null 2>&1; then
     printf 'present'
@@ -172,6 +201,22 @@ render_json() {
     out+=$'\n'
   done
 
+  out+="  ],"$'\n'
+  out+="  \"package_lists\": ["$'\n'
+  n=${#PACKAGE_LISTS[@]}
+  for (( i = 1; i <= n; i++ )); do
+    spec="${PACKAGE_LISTS[$i]}"
+    rel="${spec%%|*}"
+    name="${spec#*|}"
+    state="$(probe_path "$ROOT_DIR/$rel")"
+    out+="    {"$'\n'
+    out+="      \"name\": \"$(json_escape "$name")\","$'\n'
+    out+="      \"path\": \"$(json_escape "$rel")\","$'\n'
+    out+="      \"state\": \"$state\""$'\n'
+    out+="    }"
+    (( i < n )) && out+=","
+    out+=$'\n'
+  done
   out+="  ],"$'\n'
   out+="  \"tools\": {"$'\n'
   out+="    \"git\": \"$(probe_command git)\","$'\n'

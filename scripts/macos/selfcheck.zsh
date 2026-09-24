@@ -404,7 +404,7 @@ check_macview_query_json() {
 
   # `脚本|必填顶层字段（逗号分隔）`
   local -a specs=(
-    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,tools"
+    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,package_lists,tools"
     "link-status.zsh|version,checked_at,generated_by,targets,counts"
     "repo-status.zsh|version,checked_at,generated_by,is_git"
     "mise-status.zsh|version,checked_at,generated_by,mise_present,tools"
