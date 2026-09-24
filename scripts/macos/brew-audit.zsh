@@ -16,7 +16,7 @@
 #   `#` 之后是注释 / 去掉前导空白后取第一个字段 / 取 basename 去比。
 # 两处任何一处改了规则，另一边必须同步 —— 否则装的和报的会对不上。
 #
-# 只覆盖公共仓库的 3 份清单（common/macos cli + macos cask）。
+# 只覆盖公共仓库的 2 份清单（macos cli + macos cask）。
 #
 # 用法：
 #   zsh scripts/macos/brew-audit.zsh

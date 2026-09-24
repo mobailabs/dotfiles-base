@@ -190,7 +190,7 @@ zsh install.zsh check
 | 想改什么 | 改哪 |
 |---|---|
 | 加一个要链接的配置文件 | `scripts/macos/link-dotfiles.zsh` 的 `DOTFILE_LINKS` 加一行 + 在 `src/macos/config/` 放源 |
-| 加一个要装的软件 | `packages/{common,macos}/brew-*.txt` |
+| 加一个要装的软件 | `packages/macos/brew-cli.txt`（formulae）或 `packages/macos/brew-cask.txt`（cask） |
 | 改 shell 别名 | `src/macos/config/aliases`（一行别名）/ `src/macos/config/shell/funcs`（函数） |
 | 改系统偏好 | `scripts/macos/prefs.d/*.zsh` |
 | 改开头那几个提问 | `scripts/macos/prompt-once.zsh` |

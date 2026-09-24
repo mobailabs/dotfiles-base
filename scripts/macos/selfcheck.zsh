@@ -65,10 +65,16 @@ check_links() {
 
   (( ${#declared[@]} > 0 )) || { bad "没能从 DOTFILE_LINKS 里解析出任何落点（解析逻辑过期了？）"; return; }
 
-  # 方向一：声明了但源不存在
+  # 方向一：声明了但源不存在 —— **或源是空目录**。
+  #
+  # ⚠️ 空目录也算 `-e` 存在，但链接一个空目录 = 那个配置永远不生效
+  # （这跟「源缺失」的后果完全一样）。曾实测：加一个空目录落点，
+  # 所有检查照样通过。所以这里显式把空目录判为错。
   for rel in "${declared[@]}"; do
     if [[ ! -e "$cfgroot/$rel" ]]; then
       bad "DOTFILE_LINKS 声明了 '$rel'，但 $cfgroot/$rel 不存在"
+    elif [[ -d "$cfgroot/$rel" ]] && [[ -z "$(ls -A "$cfgroot/$rel" 2>/dev/null)" ]]; then
+      bad "DOTFILE_LINKS 声明了 '$rel'，但 $cfgroot/$rel 是**空目录**（链过去等于该配置永不生效）"
     else
       ok
     fi
@@ -96,31 +102,53 @@ check_links() {
 #
 # 只查**明确写成仓库路径**的引用（比如 `scripts/macos/foo.zsh`），
 # 不查自然语言里的描述 —— 那样误报太多。
+#
+# ⚠️ 扫描范围是**仓库里所有 `.md`**（glob 发现），不是写死的三个。
+# 写死名单踩过的坑：README/shell/private 之外还有 nvim/README.md 和
+# tmux/config/README.md，它们里悬空的路径引用永远不会被发现。
+# 凡是「新增一个文档就得记得加进名单」的设计，迟早会漏。
+#
+# ⚠️ 扩展名白名单必须包含 `.md` —— 文档互相引用（`[x](y.md)`）是最常见
+# 的一类引用，漏掉它等于漏掉一整类。同理 `.icns` 之类资源文件也在白名单。
 check_doc_refs() {
   section "文档里的仓库路径引用"
 
-  local -a docs=(
-    "$ROOT_DIR/README.md"
-    "$ROOT_DIR/shell.md"
-    "$ROOT_DIR/private.md"
-  )
+  # glob 发现所有 .md（`**` 递归，包含顶层；`(N)` 无匹配时不报错）。
+  # ⚠️ 不要再加 `*.md(N)` —— zsh 的 `**/` 已经匹配顶层，重复列出会把
+  # 同一个文档数两次（这里曾因此报「8 个文档」而实际只有 5 个）。
+  local -a docs=()
+  local d
+  for d in "$ROOT_DIR"/**/*.md(N); do
+    [[ -f "$d" ]] && docs+=("$d")
+  done
+
+  (( ${#docs[@]} > 0 )) || { bad "没有找到任何 .md 文档"; return; }
 
   local doc ref found
   for doc in "${docs[@]}"; do
-    [[ -f "$doc" ]] || { bad "文档不存在：$doc"; continue; }
     # 抓形如 scripts/xxx/yyy.zsh、packages/xxx.txt、src/macos/config/... 的引用。
     # 用 grep -o 把候选抠出来，逐个判存在。
+    #
+    # ⚠️ 扩展名白名单含 `md` —— 文档间引用（`[a](b.md)`、反引号里的 `x.md`）
+    # 也是仓库路径引用，不查就会漏（曾漏掉 `见 [x](nonexistent.md)`）。
     while IFS= read -r ref; do
       [[ -n "$ref" ]] || continue
       # 跳过明显是通配/示例的
       [[ "$ref" == *'*'* ]] && continue
+      # 跳过花括号展开（`{a,b}`）—— 那是「多个候选」的写法，
+      # 单独判存在会误报，且本身就容易过期（合并 common/ 时就发生过）。
+      [[ "$ref" == *'{'* ]] && continue
       if [[ -e "$ROOT_DIR/$ref" ]]; then
         ok
       else
-        bad "$(basename "$doc") 提到 '$ref'，但仓库里没有"
+        # 用**相对仓库的路径**而不是 basename —— 仓库里有两个 README.md
+        # （顶层 / nvim），只写 basename 会指向不明确的文件，等于没说清。
+        bad "${doc#"$ROOT_DIR"/} 提到 '$ref'，但仓库里没有"
       fi
-    done < <(grep -oE '(scripts|packages|src|prefs\.d)/[A-Za-z0-9_./-]+\.(zsh|sh|txt|toml|conf|lua)' "$doc" 2>/dev/null | sort -u)
+    done < <(grep -oE '(scripts|packages|src|prefs\.d)/[A-Za-z0-9_./-]+\.(zsh|sh|txt|toml|conf|lua|md|icns|json|yaml|yml)' "$doc" 2>/dev/null | sort -u)
   done
+
+  echo "  扫描 ${#docs[@]} 个文档"
 }
 
 # ── 3. install.zsh 调用的脚本都存在 ─────────────────────────────────────
@@ -313,7 +341,9 @@ check_syntax() {
   section "shell 脚本语法"
 
   local f n=0
-  for f in "$ROOT_DIR"/**/*.zsh(N) "$ROOT_DIR"/*.zsh(N); do
+  # ⚠️ 只写 `**/*.zsh(N)` —— zsh 的 `**/` 已包含顶层，再加 `*.zsh(N)`
+  # 会把顶层的 install.zsh 数两次（曾报「28 个」而实际只有 27 个）。
+  for f in "$ROOT_DIR"/**/*.zsh(N); do
     [[ -f "$f" ]] || continue
     n=$((n + 1))
     # prefs.d 里是 bash 脚本，用 bash -n；其余用 zsh -n。
