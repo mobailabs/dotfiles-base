@@ -1,59 +1,59 @@
 # IDE & Code Editors
-claude-code
-cursor
-cursor-cli
-datagrip
-goland
-intellij-idea-ce
-jd-gui
+#claude-code
+#cursor
+#cursor-cli
+#datagrip
+#goland
+#intellij-idea-ce
+#jd-gui
 zed
 
 # Terminal & System Tools
 ghostty
-karabiner-elements
-openinterminal
-tailscale-app
+#karabiner-elements
+#openinterminal
+#tailscale-app
 
 # Fonts
-font-comic-shanns-mono-nerd-font
-font-lxgw-bright-gb
-font-lxgw-wenkai
-font-maple-mono
-font-maple-mono-cn
-font-maple-mono-nf
-font-maple-mono-nf-cn
+#font-comic-shanns-mono-nerd-font
+#font-lxgw-bright-gb
+#font-lxgw-wenkai
+#font-maple-mono
+#font-maple-mono-cn
+#font-maple-mono-nf
+#font-maple-mono-nf-cn
 
 # Development Tools
-gpg-suite
+#gpg-suite
 # xcodes-app（GUI）**在官方 homebrew/cask 里**，写短名即可。
 # 不要加 tap 前缀 —— XcodesOrg/made 只有 Formula/xcodes.rb（CLI），没有 cask。
-xcodes-app
-httpie-desktop
-antigravity
+#xcodes-app
+#httpie-desktop
+#antigravity
 
 # AI & Chat
-chatgpt
-lark
-wechat
+#chatgpt
+#lark
+#wechat
 
 # Utilities
-contexts
-homerow
-input-source-pro
-keka
-microsoft-auto-update
-microsoft-edge
-google-chrome
-mos
-omnidisksweeper
-pearcleaner
-popclip
-only-switch
-onedrive
+#contexts
+#homerow
+#input-source-pro
+#keka
+#microsoft-auto-update
+#microsoft-edge
+#google-chrome
+#mos
+#omnidisksweeper
+#pearcleaner
+#popclip
+#only-switch
+#onedrive
 
 # Design & Graphics
-inkscape
+#inkscape
 
 # Communication
-qq
-telegram
+#qq
+#telegram
