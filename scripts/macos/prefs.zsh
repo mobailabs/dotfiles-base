@@ -27,8 +27,16 @@ fi
 
 echo "Applying macOS preferences..."
 
-# 需要 sudo 的放最后，失败也不影响前面。
-prefs=(
+# ── 顺序 ────────────────────────────────────────────────────────────────
+#
+# `sudo_touchid.zsh` 要密码，放**最后** —— 它失败时前面的都已经应用过了。
+# 其余几个都是 `defaults write`，互相独立，顺序无所谓。
+#
+# ⚠️ 这里**只列顺序，不列清单**：磁盘上真实有哪些文件由 glob 决定。
+# 以前是硬编码数组，后果是「新加一个 prefs.d/foo.zsh 但忘了加进数组」
+# → 它**静默不跑**，而且没有任何提示 —— 你配的偏好看起来"生效了"，
+# 其实一次都没执行。现在 glob 发现 + 下面的完整性校验把这个坑堵上。
+PREF_ORDER=(
   dock.zsh
   finder.zsh
   keyboard.zsh
@@ -39,6 +47,32 @@ prefs=(
   security_privacy.zsh
   sudo_touchid.zsh
 )
+
+# glob 是唯一的「有哪些要跑」的事实来源。
+discovered=()
+for f in "$PREFS_DIR"/*.zsh(N); do
+  discovered+=("$(basename "$f")")
+done
+
+# 排在 PREF_ORDER 里的先按顺序跑，其余的（新加的、还没排进顺序）自动排到末尾。
+# 这样**新文件一定会跑**，只是顺序在最后 —— 漏加顺序是「慢」，不是「不跑」。
+prefs=()
+for name in "${PREF_ORDER[@]}"; do
+  (( ${discovered[(I)$name]} )) && prefs+=("$name")
+done
+for name in "${discovered[@]}"; do
+  (( ${PREF_ORDER[(I)$name]} )) || prefs+=("$name")
+done
+
+# 反过来也要报：PREF_ORDER 里点名了、磁盘上却没有。
+# 「顺序里有个文件被删了/改名了」是另一个方向的静默失效。
+stale=()
+for name in "${PREF_ORDER[@]}"; do
+  (( ${discovered[(I)$name]} )) || stale+=("$name")
+done
+if (( ${#stale[@]} > 0 )); then
+  echo "  ! 顺序表里的这些文件不在 prefs.d（被删或改名了？）：${(j:、:)stale}" >&2
+fi
 
 ok=0
 failed=()

@@ -14,6 +14,7 @@ Commands:
   prefs            Apply macOS preferences only (re-runnable, idempotent)
   link             Link dotfiles only
   audit            Report declared-but-not-installed brew packages (read-only)
+  check            Repo self-check: cross-references & syntax (read-only)
   help             Show this help
 
 Options（用于 base，实现零交互）:
@@ -292,6 +293,7 @@ main() {
     prefs) "$SCRIPT_DIR/scripts/macos/prefs.zsh" ;;
     link) "$SCRIPT_DIR/scripts/common/link-dotfiles.zsh" ;;
     audit) "$SCRIPT_DIR/scripts/common/brew-audit.zsh" ;;
+    check) zsh "$SCRIPT_DIR/scripts/common/selfcheck.zsh" ;;
     help|-h|--help) usage ;;
     *)
       echo "Unknown command: $cmd" >&2

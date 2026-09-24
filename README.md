@@ -156,6 +156,28 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 
 ---
 
+## 改完跑一下自检
+
+```sh
+zsh install.zsh check
+```
+
+它把仓库里的**交叉引用**全查一遍（只读，不联网，不改东西）：
+
+- `DOTFILE_LINKS` 声明的落点 ←→ `src/macos/config/` 下真的有源（**两个方向都查**）
+- 文档里写到的仓库路径 ←→ 文件真的存在
+- `install.zsh` 调用的每个脚本 ←→ 存在
+- `prefs.d/` 的顺序表 ←→ 磁盘上的文件（两个方向）
+- `private.md` 的槽位 ←→ `private-state.zsh` 里的 `SLOTS`
+- 所有 `.zsh` / `prefs.d/*.zsh` 的语法
+- `private-state.zsh` 产出的 JSON 合法
+
+**为什么要有它**：上面这些都是「改了 A 忘了 B → A 照跑、B 静默失效」的关系。
+没有自检时只能靠人肉眼对 —— 于是「我觉得对」就等于对。
+加了新东西（落点、偏好、脚本）之后跑一下，有问题会指名道姓说哪一条。
+
+---
+
 ## 要改东西，改哪里
 
 | 想改什么 | 改哪 |
@@ -168,6 +190,7 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 | 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/common/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
 | 加一个机器专属的东西 | 私有源，**不是这里**（接口见 `private.md`） |
+| **改完任何东西** | 跑 `zsh install.zsh check`（见下面「改完跑一下自检」） |
 
 判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有源。**
 

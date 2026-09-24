@@ -105,12 +105,18 @@ setup_git_identity() {
 
   # 合并后仍不完整：不动文件，只提示到底缺哪一项。
   if [[ -z "$GIT_NAME" || -z "$GIT_EMAIL" ]]; then
-    if [[ -n "$have_name" || -n "$have_email" ]]; then
-      local missing="name"
-      [[ -n "$have_name" || -n "$GIT_NAME" ]] && missing="email"
-      echo "  ! ~/.gitconfig.local 的身份不完整（缺 ${missing}），本次也没提供；保持原样。"
+    # ⚠️ 缺的**可能不止一项**，所以要用数组收集、全列出来。
+    # 旧写法是「猜一项」：`missing="name"` 然后一个条件翻成 email ——
+    # 两个都缺时只会说「缺 name」，而 email 同样没配却不提。
+    # 用户看到「缺 name」补了名字再来一次，才发现还缺 email —— 多跑一趟。
+    local -a missing=()
+    [[ -z "$GIT_NAME" ]]  && missing+=("name")
+    [[ -z "$GIT_EMAIL" ]] && missing+=("email")
+
+    if [[ -n "$have_name" || -n "$have_email" || -n "$GIT_NAME" || -n "$GIT_EMAIL" ]]; then
+      echo "  ! ~/.gitconfig.local 的身份不完整（缺 ${(j:、:)missing}），本次也没提供；保持原样。"
     else
-      echo "  ! 没有 git 身份；跳过（之后可建 ~/.gitconfig.local 补上）。"
+      echo "  ! 没有 git 身份（缺 name、email）；跳过（之后可建 ~/.gitconfig.local 补上）。"
     fi
     return 0
   fi
