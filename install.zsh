@@ -4,6 +4,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# 统一的 sudo 调用方式（终端 / macview 两种环境都认）。定义 SUDO /
+# sudo_check / sudo_authorize —— 本文件里**不写裸 sudo**。理由见 sudo-env.zsh。
+source "$SCRIPT_DIR/scripts/macos/sudo-env.zsh"
+
 usage() {
   cat <<EOF
 Usage: zsh install.zsh [command] [options]
@@ -84,8 +88,9 @@ _SUDO_KEEPALIVE_SLEEPFILE=""
 # 全部结束时 kill 掉。用 `sudo -n`（而非 `sudo -v`）保证后台进程**永远不会
 # 弹提示**——它弹了也没人看得到，只会挂住。
 start_sudo_keepalive() {
-  # 没有预授权就不必开（否则只是个空转的循环）
-  sudo -n true 2>/dev/null || return 0
+  # 没有预授权就不必开（否则只是个空转的循环）。
+  # 用 `sudo_check`（内部是 `"${SUDO[@]}" -n`）—— 静默不打扰。
+  sudo_check || return 0
 
   # ⚠️ 不要把 `sleep 60` 直接放在后台 subshell 里。
   #
@@ -117,7 +122,7 @@ start_sudo_keepalive() {
     # （只要终端在，就会等你输入，不会卡死）。
     fails=0
     while true; do
-      if sudo -n true 2>/dev/null; then
+      if sudo_check; then
         fails=0
       else
         fails=$((fails + 1))
@@ -254,19 +259,23 @@ run_base() {
 
   # prefs 里 sudo_touchid 要用管理员权限写 /etc/pam.d/sudo_local。
   #
-  # 这里补一次 `sudo -v`，但要说清楚它**不是功能性前提**：真正执行 sudo 的是
-  # 孙进程（install.zsh → prefs.zsh → sudo_touchid.zsh → sudo install），
-  # 而 `sudo -v` 只在**本进程**里跑。若 timestamp 按 tty 记，同一终端下是共享的、
+  # 这里补一次授权（`sudo_authorize`），但要说清楚它**不是功能性前提**：
+  # 真正执行 sudo 的是孙进程（install.zsh → prefs.zsh → sudo_touchid.zsh），
+  # 而这次授权只在**本进程**里跑。若 timestamp 按 tty 记，同一终端下是共享的、
   # 这次就有效；若按 ppid 记，则不共享、这次等于白做 —— 我无法确证是哪一种
   # （见 start_sudo_keepalive 的注释）。
   #
   # 所以保留它只有一个理由：把「需要密码」提示到**专门的权限时刻**，
   # 而不是混在「应用偏好」的输出里、让人看不懂在问什么。
-  # 真正的兜底是 sudo_touchid 自己会弹密码（有终端就会等你输入，不会卡死）。
+  # 真正的兜底是 sudo_touchid 自己会弹（终端提示 或 macview 密码框，都不会卡死）。
   #
-  # 2>/dev/null：不把「a terminal is required」这类噪音打到用户面前；
-  # 密码提示走 /dev/tty，不受影响，照样看得见。
-  sudo -v 2>/dev/null || true
+  # ⚠️ 走 `sudo_authorize` 而不是裸 `sudo -v`：macview 环境下前者会用
+  # `sudo -A` 调 askpass 弹原生框（实测 `sudo -A -v` 确实会弹），
+  # 裸 `sudo -v` 只会报「a terminal is required」。
+  #
+  # 2>/dev/null：不把「没拿到授权」这类噪音打到用户面前；
+  # 密码提示走 /dev/tty 或 askpass，不受影响，照样看得见。
+  sudo_authorize 2>/dev/null || true
 
   # 偏好可能要求 sudo 密码；你按了取消也不该让前面装好的东西白费。
   run_step "macOS 系统偏好"         "$SCRIPT_DIR/scripts/macos/prefs.zsh"

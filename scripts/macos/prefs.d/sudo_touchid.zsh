@@ -23,6 +23,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# 统一的 sudo 调用方式：终端环境 = 裸 sudo（弹终端提示）；
+# macview 环境 = sudo -A（弹原生密码框）。见 sudo-env.zsh。
+# ⚠️ 这里**不能**写裸 sudo —— 无 tty 时它会报「a terminal is required」。
+source "$SCRIPT_DIR/../sudo-env.zsh"
+
 echo "  sudo Touch ID"
 
 SUDO_PAM="/etc/pam.d/sudo"
@@ -49,7 +55,7 @@ if [[ -f "$SUDO_PAM" ]] && grep -q "include[[:space:]]*sudo_local" "$SUDO_PAM" 2
   # 用 mktemp + install 保证原子性与权限，不半途留下坏文件。
   tmp="$(mktemp)"
   printf '%s\n' "$TID_LINE" > "$tmp"
-  sudo install -m 644 -o root -g wheel "$tmp" "$LOCAL_PAM"
+  "${SUDO[@]}" install -m 644 -o root -g wheel "$tmp" "$LOCAL_PAM"
   rm -f "$tmp"
   echo "Done. 撤销方法：sudo rm $LOCAL_PAM"
   exit 0
@@ -59,9 +65,9 @@ fi
 if [[ -f "$SUDO_PAM" ]]; then
   echo "No sudo_local include found；回退为直接修改 ${SUDO_PAM}（先备份）。"
   backup="${SUDO_PAM}.dotsu-backup.$(date +%Y%m%d-%H%M%S)"
-  sudo cp -p "$SUDO_PAM" "$backup"
+  "${SUDO[@]}" cp -p "$SUDO_PAM" "$backup"
   echo "  原文件已备份到：$backup"
-  sudo sh -c "printf '%s\n' '$TID_LINE' >> '$SUDO_PAM'"
+  "${SUDO[@]}" sh -c "printf '%s\n' '$TID_LINE' >> '$SUDO_PAM'"
   echo "Done. 出问题可用备份还原：sudo cp $backup $SUDO_PAM"
 else
   echo "! 找不到 ${SUDO_PAM}，跳过（系统结构异常）。" >&2

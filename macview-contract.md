@@ -103,18 +103,36 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 |---|---|---|
 | macview 自己发的 sudo | —— | **macview**(发命令时带 `-A`) |
 | Homebrew 的 `install.sh` | **会**(`execute_sudo` 见 `SUDO_ASKPASS` 非空就加 `-A`) | **不用改** —— 只把 `SUDO_ASKPASS` 放进子进程环境 |
-| **本仓库脚本里的裸 `sudo`**(`scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 等) | **不会** | **本仓库**(见下) |
+| **本仓库脚本里的 `sudo`** | —— | **本仓库,已改**(见下) |
 
-**最后一行是本仓库要补的洞**:`sudo_touchid.zsh:52/62/64` 那些裸 `sudo`
-在「无 tty + 只有 `SUDO_ASKPASS`」时**会失败**。两条修法:
+**最后一行已经修了**(`scripts/macos/sudo-env.zsh`)。做法就是上表倾向的
+第二条「统一变量」，而且它在实测里又暴露了**第二个、更靠前的洞**:
 
-| 修法 | 代价 |
-|---|---|
-| 每个裸 `sudo` 改成 `sudo -A` | 改动小、直白。但 `-A` 在「有真终端、没有 `SUDO_ASKPASS`」时会反而失败,要判断 |
-| 脚本读一个 `SUDO` 变量(默认 `sudo`,macview 传 `sudo -A`) | 一处定义、所有调用点统一。要动几个文件 |
+⚠️ **`sudo -n` 不认 `SUDO_ASKPASS`。** 脚本原来用 `sudo -n true` 判断
+「有没有 sudo 授权」—— 但 `-n` 的语义是「**绝不提问**」，
+它连 `SUDO_ASKPASS` 都不调（实测:同样有 `SUDO_ASKPASS`、同样无 tty，
+`sudo -n true` 报 `a password is required`;`sudo -A -v` 才弹出密码框）。
+后果比裸 `sudo` 更坏，因为它是**判定**:
 
-**这一版倾向第二条**(统一变量),但**列为待办**,不在这次改动里 ——
-它要动 dotfiles 的脚本,得单独验证。(见 §六。)
+  - `prompt-once.zsh` 的 `preauth_sudo` → 永远判定「未授权」→ 报
+    「跳过需要 sudo 的步骤」→ **Homebrew、Touch ID 全被静默跳过**;
+  - `brew-bootstrap.zsh:33` → `exit 1` 说「没有终端可输入密码」→ **装不上**。
+
+所以修法不只是「裸 sudo 换成 `$SUDO`」，还要把**判定**从 `sudo -n true`
+换成「`sudo_check`（静默问）失败 → `sudo_authorize`（去拿，可能弹框）」。
+这正是 `sudo-env.zsh` 提供的那对函数。
+
+| 文件 | 原来 | 现在 |
+|---|---|---|
+| `scripts/macos/sudo-env.zsh` | ——(**新增**) | 定义 `SUDO`/`sudo_check`/`sudo_authorize` |
+| `prompt-once.zsh:141,149` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `brew-bootstrap.zsh:33,36` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `install.zsh:88,120,274` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `scripts/macos/prefs.d/sudo_touchid.zsh:52,62,64` | 裸 `sudo install/cp/sh` | `"${SUDO[@]}" install/cp/sh` |
+
+`sudo-env.zsh` 只在 `SUDO_ASKPASS` 非空**且无 tty**时用 `sudo -A`;
+终端环境下仍是裸 `sudo`（让 sudo 自己弹终端提示）—— 所以**手敲
+`zsh install.zsh` 的行为一个字都没变**。
 
 > **顺带一提**:`brew-install.zsh` 那条**不用改**。它跑的是 Homebrew 自己的
 > `install.sh`,而那个脚本自己认 `SUDO_ASKPASS`。macview 只要把
@@ -494,12 +512,12 @@ macview 写死的东西:
   在本仓库加 `install.zsh restore`,读 `link-dotfiles.zsh` 自己的备份)。
 - **`.envconfig.local` 的归宿**(`docs/design/2026-09-22-dotfiles-整理盘点.md` §3.3
   记的老问题)—— 那是本仓库自己的事,不是 macview 接口。
-- ⚠️ **本仓库脚本里的裸 `sudo` 要认 `SUDO_ASKPASS`**(§1.1.2)—— **待办**。
-  `scripts/macos/prefs.d/sudo_touchid.zsh` 的 `sudo install` 等,在 macview 那种
-  「无 tty + 只有 `SUDO_ASKPASS`」的环境里**会失败**(因为没给 `-A`)。
-  倾向的做法是脚本读一个 `SUDO` 变量(`sudo` 或 `sudo -A`),
-  但要动几个脚本、得单独验证,所以**不在这次改动里**。
-  在那之前,macview 跑 `prefs` 时 Touch ID 那一步会失败并报出来(不是静默)。
+- ~~⚠️ **本仓库脚本里的裸 `sudo` 要认 `SUDO_ASKPASS`**(§1.1.2)—— **待办**。~~
+  ✅ **已做**:新增 `scripts/macos/sudo-env.zsh`（`SUDO` / `sudo_check` /
+  `sudo_authorize`),`prompt-once` / `brew-bootstrap` / `install.zsh` /
+  `scripts/macos/prefs.d/sudo_touchid.zsh` 的 sudo 调用点全部改走它。连带修掉了一个
+  更靠前的洞:原来的**判定** `sudo -n true` 不认 `SUDO_ASKPASS`(实测),
+  会让 macview 环境**静默跳过** Homebrew 和 Touch ID。详见 §1.1.2。
 
 ### 本次新拍板的两条(从「没定」移过来)
 

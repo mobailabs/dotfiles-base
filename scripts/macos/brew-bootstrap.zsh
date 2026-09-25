@@ -13,6 +13,10 @@
 
 set -uo pipefail
 
+# 统一的 sudo 调用方式（终端 / macview 都认）。理由见 sudo-env.zsh。
+ROOT_DIR="$(cd "$(dirname "${0:A}")/../.." && pwd)"
+source "$ROOT_DIR/scripts/macos/sudo-env.zsh"
+
 # 已经能用就什么都不做（eval shellenv 把 HOMEBREW_* 和 PATH 补齐）。
 if command -v brew >/dev/null 2>&1; then
   eval "$(brew shellenv)"
@@ -28,18 +32,22 @@ echo "Homebrew not found, installing..."
 # （"Input is required, but 'NONINTERACTIVE' is set" 之类）。
 # 所以这里是全流程唯一「必须提前拿到授权」的地方。
 #
-# 有终端就就地弹一次密码（会等你输入）；拿不到就**明确报错**，
-# 不要假装在装、最后丢一个看不懂的 Homebrew 报错。
-if ! sudo -n true 2>/dev/null; then
-  if [[ -t 0 ]]; then
-    echo "安装 Homebrew 需要管理员权限，请输入密码："
-    if ! sudo -v; then
-      echo "brew-bootstrap: 未获得管理员权限，无法安装 Homebrew。" >&2
-      echo "  可以手动安装后重跑：https://brew.sh" >&2
-      exit 1
-    fi
+# ⚠️ 判定和授权都走 `sudo-env.zsh`，**不写裸 `sudo -n` / `sudo -v`** ——
+# 裸的这套在 macview（无 tty + SUDO_ASKPASS）里是坏的：`sudo -n` 不认
+# askpass，会永远失败，于是这里报「没有终端」把整个 Homebrew 跳过。
+# `sudo_authorize` 在两种环境下都对：终端里弹提示，macview 里弹原生框。
+#
+# 拿不到就**明确报错**，不要假装在装、最后丢一个看不懂的 Homebrew 报错。
+if ! sudo_check; then
+  if sudo_authorize 2>/dev/null; then
+    # 拿到了（终端输入 或 macview 密码框），继续装。
+    :
+  elif [[ -t 0 ]]; then
+    echo "brew-bootstrap: 未获得管理员权限，无法安装 Homebrew。" >&2
+    echo "  可以手动安装后重跑：https://brew.sh" >&2
+    exit 1
   else
-    echo "brew-bootstrap: 需要管理员权限安装 Homebrew，但当前没有终端可输入密码。" >&2
+    echo "brew-bootstrap: 需要管理员权限安装 Homebrew，但没能拿到（没有终端可输入密码）。" >&2
     echo "  请在有终端的交互 shell 里重跑，或先手动安装 Homebrew：https://brew.sh" >&2
     exit 1
   fi
