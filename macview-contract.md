@@ -65,7 +65,7 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 | 对账(只读) | `zsh install.zsh audit` | 否 | **0 / 1** | ✅ 已有 |
 | 仓库自检(只读) | `zsh install.zsh check` | 否 | 0 / 1 | ✅ 已有 |
 | 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 否 | 0 / 1 | ✅ 已有 |
-| 链私有 overlay | **缺** —— 见 §3.4 | 否 | ? | ❌ 要新增 |
+| 链私有 overlay | **不做** —— 见 §3.4（走 `install.zsh base`） | 否 | — | ⛔ 已定不做 |
 
 **契约**:上表 ✅ 的命令**以后不改名、不改语义**。
 改了 macview 会报「脚本不在」(启动检测),不会静默。
@@ -211,7 +211,12 @@ macview 显示状态靠这些。**格式都是我定的**,改格式 = 改契约�
 
 约定:
 
-- 统一用 `--json` 参数(和 `private-state.zsh` 的 `--stdout` 对齐,见下)。
+- 统一用 `--json` 参数。**唯一的例外是 `private-state.zsh --stdout`** ——
+  它比这套约定早，而且它有两个模式（`--write` 给 `prompt-once` 落盘、
+  `--stdout` 给 macview 打印），`--stdout` / `--write` 是对成对的词，
+  改名叫 `--json` 反而让那一对变别扭。**所以不改它，而是把例外写在这里。**
+  （原先本节写「统一用 `--json`」、§2.4 写 `--stdout`，两处矛盾 ——
+  现在以本行为准：`private-state.zsh` 用 `--stdout`，其余用 `--json`。）
 - 输出**只有一个 JSON 对象到 stdout**;**日志/警告一律走 stderr**。
   (这条很硬:`private-state.zsh:198` 的注释记着一个坑 —— 有一处输出
    直接 `echo` 到了 stdout,污染了 JSON,而且是静默的。)
@@ -431,25 +436,29 @@ macview 侧的纪律(照 DOTFILES 的既有规矩):
 这条不用写进契约 —— 它不碰 dotfiles 的接口。但设计文档里要有
 (macview 设计文档 §2.1 的「打开」)。
 
-### §3.4 缺的那条:私有 overlay 的独立入口
+### §3.4 私有 overlay 的独立入口 —— **已定：不做**
 
 现状:私有 overlay 的**五个落点**(`~/.gitconfig.local` / `~/.zshrc.local` /
 `~/.envconfig.local` / `~/.ssh/config.local` / `~/.aliases`,也是五个槽位)
 **没有独立的公开入口** —— `link-private.zsh` 在私有仓库里,macview 够不着。
 
-**契约要补**:公开仓库提供一个稳定的入口,让 macview 能单独触发「链私有 overlay」。
-两个选择:
+原先这里建议「新增 `install.zsh private-link`」。**最终决定不做** ——
+`private.md` 的「已决定」里已经写死了这条(`private.md:678`):
 
-| 选项 | 代价 |
-|---|---|
-| 新增 `install.zsh private-link` | 要调私有仓库的脚本,得知道私有仓库在不在(前提检查已覆盖) |
-| 让 `install.zsh base` 顺带做 | 不独立,但 macview 就没有「只链私有源」这个按钮 |
+> 检测入口:独立脚本 `private-state.zsh`,双 flag (`--write` / `--stdout`),
+> 一份检测逻辑两个调用方;**不做** `install.zsh private` 子命令
+> (那会让 install 变成 macview 的入口,职责混乱)。
 
-**建议前者**(新增子命令),因为它让「配置」页的私有源那一块能有自己的应用按钮。
+两条文档原先矛盾(本节建议做、`private.md` 决定不做)。**以 `private.md` 为准**,
+理由是它说的对:私有 overlay 的链接本来就是 `install.zsh base` 的一部分,
+用户跑过一次 base 就链好了;为它单开一个子命令,等于让公开仓库
+去调私有仓库的脚本 —— 那是**反过来**把依赖写反了。
 
-⚠️ 但私有 overlay 的链接脚本**在私有仓库里**,不在本仓库。
-公开仓库的新子命令不能假设它一定在 —— 要在它不在时**明确报出来**
-(「没找到私有仓库,无法链 overlay」),不是静默。
+**所以「配置」页的私有源那一块只显示状态,不给「链私有 overlay」按钮。**
+要链就走 `install.zsh base`(一键配置里已经包含)。
+
+> 契约 §二 的查询约定里,`private-state.zsh` 用 `--stdout`(不是 `--json`)——
+> 唯一的例外,理由见 §二。
 
 ---
 
