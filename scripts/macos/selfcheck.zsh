@@ -410,6 +410,7 @@ check_macview_query_json() {
     "mise-status.zsh|version,checked_at,generated_by,mise_present,tools"
     "alias-status.zsh|version,checked_at,generated_by,files,count"
     "git-identity.zsh|version,checked_at,generated_by,identity,credential_helpers,include_paths"
+    "shell-map.zsh|version,checked_at,generated_by,nodes,edges"
   )
 
   local spec name req impl json missing

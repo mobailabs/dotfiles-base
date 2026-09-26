@@ -487,6 +487,52 @@ mise 声明的工具 vs 实装。
 > **两个问题,两个答案,可以不一样** —— 本机就是「文件在、源里没有」。
 > 所以 macview 的 git 身份页**两个都显示**、各标口径。
 
+### 2.10 shell 启动链 `scripts/macos/shell-map.zsh --json`(✅ 已建)
+
+回答「启动一个 zsh 时,谁加载了谁」。**只读** —— 不 source、不执行、不改文件。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1758700000,
+  "generated_by": "shell-map.zsh",
+  "nodes": [
+    { "repo_rel": "zsh/zshenv",   "home_rel": ".zshenv",   "phase": "all" },
+    { "repo_rel": "zsh/zprofile", "home_rel": ".zprofile", "phase": "login" },
+    { "repo_rel": "zsh/zshrc",    "home_rel": ".zshrc",    "phase": "interactive" }
+  ],
+  "edges": [
+    { "from": "zsh/zshrc", "to": "~/.exports", "kind": "repo",
+      "repo_rel": "env/exports", "conditional": true, "line": 25 },
+    { "from": "zsh/zshrc", "to": "~/.zshrc.local", "kind": "private",
+      "repo_rel": null, "conditional": true, "line": 40 },
+    { "from": "zsh/zshrc", "to": "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh",
+      "kind": "external", "repo_rel": null, "conditional": true, "line": 83 }
+  ]
+}
+```
+
+- **`nodes` 只有三个启动文件**(`zshenv` / `zprofile` / `zshrc`)——
+  `phase` 是「什么时候加载」:`all`(所有 shell)/ `login`(登录 shell)/
+  `interactive`(交互 shell)。这是**给人看的事实**,不是 macview 判的。
+- **`edges` 是这三个文件的直接 `source`**。**不递归**跟进被 source 的文件
+  (用户 2026-09-25 拍板)—— 理由和边界写死在脚本头部。
+- `kind` 三态(决定界面能不能「点开」):
+  - `repo` —— 目标是仓库里的文件(如 `~/.exports` 其实链到 `env/exports`),
+    `repo_rel` 是仓库内相对路径,**macview 能点开**。
+  - `private` —— 私有 overlay(如 `~/.zshrc.local`),存在才加载,内容不在仓库。
+  - `external` —— 别的东西(Homebrew 插件 / oh-my-zsh / `~/.bun/_bun`),
+    **原样显示字面量**,不展开 `$HOMEBREW_PREFIX`(那会给一个可能不存在的
+    绝对路径,更误导)。
+- **怎么把 `~/.exports` 反查成 `env/exports`**:靠 `link-dotfiles.zsh` 的
+  `DOTFILE_LINKS`(**不在这里再抄一份**,同 §2.2 的纪律)。落点是**目录**时
+  (如 `.config/tmux|tmux/config`),目标在目录里的文件也归 repo
+  (`$HOME/.config/tmux/aliases.sh` → `tmux/config/aliases.sh`)。
+- `conditional` = 这条 source 有没有条件守卫(同行 `[[ -f … ]] &&` 或
+  在 `if` 块里)。本仓库几乎全是 —— 如实反映「文件不存在就跳过」。
+- **不递归、不展开变量、不执行**;遇到认不出的行**跳过**(stderr 记一条),
+  不猜。三个启动文件任一不在时**报错退出、不给 JSON**。
+
 ---
 
 ## 三、macview 会改的东西(编辑侧)
