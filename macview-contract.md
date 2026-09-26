@@ -226,10 +226,11 @@ macview 显示状态靠这些。**格式都是我定的**,改格式 = 改契约�
 - **每个脚本的产出都由 `selfcheck.zsh` 校验**(`check_macview_query_json`):
   跑它的 `--json`、要求合法 JSON、要求必填顶层字段都在。格式漂了会**报错**。
 
-> ⚠️ **实现状态**:下面 2.1 / 2.2 / 2.3 / 2.5 / 2.6 的脚本**已经建好骨架并跑通**
-> (2026-09-24),它们的 `--json` 产出已进 `selfcheck`。2.4 用现成的。
-> 字段以本节的 JSON 为准 —— 与早期草稿的字段名(`state` 的取值、`missing` 项的
-> 形状等)有出入时,**以本节为准**,因为本节是从真实产出抄的。
+> ⚠️ **实现状态**:下面 2.1–2.11 的脚本**都已经建好并跑通**
+> (2.1–2.10 于 2026-09-24,2.11 于 2026-09-26),它们的 `--json` 产出已进
+> `selfcheck`。2.4 用现成的。字段以本节的 JSON 为准 —— 与早期草稿的字段名
+> (`state` 的取值、`missing` 项的形状等)有出入时,**以本节为准**,
+> 因为本节是从真实产出抄的。
 
 ### 2.1 前提检查 `scripts/macos/preflight.zsh --json`(✅ 已建)
 
@@ -532,6 +533,80 @@ mise 声明的工具 vs 实装。
   在 `if` 块里)。本仓库几乎全是 —— 如实反映「文件不存在就跳过」。
 - **不递归、不展开变量、不执行**;遇到认不出的行**跳过**(stderr 记一条),
   不猜。三个启动文件任一不在时**报错退出、不给 JSON**。
+
+### 2.11 环境声明 `scripts/macos/env-status.zsh --json`(✅ 已建)
+
+回答「dotfiles 声明了哪些环境变量、PATH 由谁组装、每一条带什么条件」。
+
+> ⚠️ **它只报「声明」,不报「实际值」。** 这是本节最要紧的一条,单独说清楚。
+
+**为什么只报声明**:`zshenv` 里全是条件(14 处 `[[ -d … ]] &&`、7 个 `if`、
+brew 探测门)。**声明值和实际值不是一回事** —— 例如
+`[[ -d "$HOME/.bin" ]] && path+=("$HOME/.bin")`,声明里有这一条,但本机
+`~/.bin` **不存在**,所以它**没进 PATH**。
+
+要报「实际值」只有一条可靠的路:起一个真 zsh(`zsh -l -c 'print $PATH'`)。
+但那会**执行 `.zshrc`**(oh-my-zsh + 一串插件)—— 慢,而且等于这个只读检测器
+去**跑用户的配置**。本仓库所有 `*-status.zsh` 的共同纪律是「只读文本、不执行」,
+这里不破例。
+
+所以产出里每一条都带 `condition` 字段,**原样记下声明时的守卫**。界面照实说
+「dotfiles 声明:X 存在时才加」,**不画那个 `✓ 已生效`**(同 §二「没能查 ≠ 没有」)。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1790409032,
+  "generated_by": "env-status.zsh",
+  "kind": "declared",
+  "note": "以下都是仓库里**声明**要设的环境，不是本机实际生效值；dotfiles 没有查实际值的脚本。",
+  "files": [
+    "src/macos/config/zsh/zshenv",
+    "src/macos/config/env/envconfig",
+    "src/macos/config/env/exports"
+  ],
+  "variables": [
+    { "name": "EDITOR", "value": "nvim", "condition": null,
+      "dynamic": false, "file": "src/macos/config/zsh/zshenv", "line": 13 },
+    { "name": "HOMEBREW_PREFIX", "value": "/opt/homebrew",
+      "condition": "[[ -x \"/opt/homebrew/bin/brew\" ]]",
+      "dynamic": false, "file": "src/macos/config/zsh/zshenv", "line": 109 },
+    { "name": "HOMEBREW_CELLAR", "value": "$HOMEBREW_PREFIX/Cellar",
+      "condition": "[[ -z \"${HOMEBREW_CELLAR:-}\" ]]",
+      "dynamic": true, "file": "src/macos/config/zsh/zshenv", "line": 117 }
+  ],
+  "path_segments": [
+    { "value": "$HOME/.bin", "order": "prepend",
+      "condition": "[[ -d \"$HOME/.bin\" ]]", "owner": "user-paths",
+      "file": "src/macos/config/zsh/zshenv", "line": 40 },
+    { "value": "$HOME/.cargo/bin", "order": "append",
+      "condition": "[[ -d \"$HOME/.cargo/bin\" ]]", "owner": "language-tools",
+      "file": "src/macos/config/zsh/zshenv", "line": 48 },
+    { "value": "$HOMEBREW_PREFIX/bin", "order": "prepend",
+      "condition": "[[ \":$PATH:\" == *\":$HOMEBREW_PREFIX/bin:\"* ]]", "owner": "brew",
+      "file": "src/macos/config/zsh/zshenv", "line": 133 }
+  ],
+  "path_dedup": true,
+  "counts": { "variables": 11, "path_segments": 12 }
+}
+```
+
+- `kind` 恒为 `"declared"` —— **机器可读地**声明「这是声明、不是实际值」,
+  界面不用靠猜。`note` 是同义的**人话**版本,供界面直接显示。
+- `variables[].condition` —— 声明时的守卫原文(`null` = 无条件)。
+  `dynamic: true` = 值里有 `$VAR` / `` ` `` / `$( )`,界面说「运行时算的」,
+  **不当字面量**。
+- `path_segments[].order` —— `prepend`(前置,`path=(X $path)` / `_pre+=(X)`)
+  / `append`(`path+=(X)`)。**位置有意义**(自定义路径要排在系统路径前,
+  否则被同名命令遮住)—— 所以它是个字段,不是显示细节。
+- `path_segments[].owner` —— `user-paths` / `language-tools` / `brew` /
+  文件名。这是**给界面分组用的提示**,由脚本按声明位置判的,不是 macview 判的。
+- 值**不展开** `$HOME` / `$HOMEBREW_PREFIX` —— 展开会给界面一个可能不存在的
+  绝对路径,反而更误导(同 §2.10 的 `external` 决定)。
+- `path_dedup` —— zshenv 有没有 `typeset -U path`(PATH 自动去重)。一个事实位。
+- **不递归** source 出来的文件(`envconfig` 里会 source `~/.envconfig.local`,
+  那是私有源,归 `private-state.zsh`)。三个源文件任一不在时**报错退出、
+  不给 JSON**;一条都抽不到时也**报错退出**(同 link-status 纪律)。
 
 ---
 
