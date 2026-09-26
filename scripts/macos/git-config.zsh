@@ -45,6 +45,17 @@
 # 也在）。本脚本**全报**（`all` 保留每条 + 各自来源），因为「git 最终用哪个」
 # 已经由 `settings` 取**最后一个**体现了 —— `all` 是给人核对来源用的。
 #
+# ## 已知边界：**多行值会被截断**（照实说，不假装没有）
+#
+# 本脚本按**行**读 `git config --list` 的输出，所以**值里带换行的配置会读错**
+# （git 支持多行值，如多行 alias：`alias.foo = "!f() {\n echo hi\n}; f"`）。
+# 后果是那种值只报出第一行 —— 但**不报错、也不编**（报的是真实存在的那部分）。
+#
+# 为什么不在这一版修：要正确处理多行，得改用 `git config --null --list` 的
+# `\0` 分隔（值里的换行就不再有歧义）。那要换一套解析，而本机（和绝大多数
+# 开发机）的全局配置没有多行值 —— 收益小、改动大。**先记下来**：真遇到多行
+# 配置，就换成 `--null` 那套。`git-identity.zsh` 有**同一个**限制。
+#
 # 用法：
 #   zsh scripts/macos/git-config.zsh --json
 
@@ -211,7 +222,6 @@ render_json() {
   local -a notable_keys=() notable_vals=()
   local -a include_paths=()
   local -a seen_sources=()
-  local prev_key="" has_value=""
 
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
