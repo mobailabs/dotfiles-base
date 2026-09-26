@@ -394,6 +394,47 @@ mise 声明的工具 vs 实装。
 将来若要做,**唯一不漂移的做法**是让每个 `prefs.d/*.zsh` 自己报告
 「我要设哪些键」,而不是 macview 去解析它们(见 §六)。
 
+### 2.8 别名 `scripts/macos/alias-status.zsh --json`(✅ 已建)
+
+回答「这台机器上定义了哪些 shell 别名、各自是什么」。**按文件分组**。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1758700000,
+  "generated_by": "alias-status.zsh",
+  "files": [
+    {
+      "file": "src/macos/config/aliases",
+      "aliases": [
+        { "name": "gs",  "value": "git status",            "condition": null },
+        { "name": "ll",  "value": "eza -l --icons --git -a", "condition": "eza 存在" },
+        { "name": "ll",  "value": "ls -lah",                "condition": "eza 不存在" }
+      ]
+    }
+  ],
+  "count": 46
+}
+```
+
+- 源文件三个:`src/macos/config/aliases`(主)、`env/envconfig`(Python 别名)、
+  `tmux/config/aliases.sh`(tmux)。
+- **按文件分组,不按 `# --- 组名 ---` 注释分**。理由:注释随便改、一改解析
+  就乱(且是静默乱);而文件是客观的「加载位置」。决定见设计稿
+  `macview/docs/design/2026-09-25-功能页细化.md` §3.1。
+- **`condition` 字段(可 null)**:别名若在 `if command -v X` 分支里,
+  值就是 `"X 存在"` 或 `"X 不存在"`;不在任何分支里则 `null`。
+  有了它才能如实显示「`ll` 有两个,看 eza 在不在」——否则界面会显示
+  两个一模一样的名字,让人以为文件坏了。
+- **解析必须允许前导空白**(`^[[:space:]]*alias `):`aliases` 31 条里有
+  **5 条是缩进的**(在 `if` 分支里)。锚 `^alias ` 只会数出 26。
+- **解析器是行级文本解析,不是 shell 求值**:认得两种引号、缩进、
+  `alias -- 名=值`、行尾注释、单层 `if/else/fi`;**不认得**多行值、
+  嵌套 if、转义引号、`unalias` —— 遇到就**跳过那一行**(stderr 记一条),
+  不猜。猜错会给界面一个假的值。
+- **一条都抽不到时退出码非 0、不输出 JSON**(不给空数组 —— 空数组会被
+  显示成「没有别名」,而真相可能是解析器跟不上格式了)。
+
 ---
 
 ## 三、macview 会改的东西(编辑侧)
