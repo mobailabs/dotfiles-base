@@ -435,6 +435,58 @@ mise 声明的工具 vs 实装。
 - **一条都抽不到时退出码非 0、不输出 JSON**(不给空数组 —— 空数组会被
   显示成「没有别名」,而真相可能是解析器跟不上格式了)。
 
+### 2.9 git 身份 `scripts/macos/git-identity.zsh --json`(✅ 已建)
+
+回答「这台机器 commit 时用谁的名字、为什么可能 commit 不了」。**只读** ——
+不改任何 git 配置、不 commit、不读 token。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1758700000,
+  "generated_by": "git-identity.zsh",
+  "identity": {
+    "name": "cole",
+    "email": "cole@example.local",
+    "name_origin": "/Users/you/.gitconfig.local",
+    "email_origin": "/Users/you/.gitconfig.local",
+    "use_config_only": true,
+    "usable": true
+  },
+  "credential_helpers": [
+    { "host": "https://github.com", "helper": "!gh auth git-credential" }
+  ],
+  "include_paths": ["~/.gitconfig.local"]
+}
+```
+
+- **数据来源是 `git config --list --show-origin`,不是自己解析 gitconfig。**
+  理由(写死在脚本头部):gitconfig 的值可能来自系统文件 / 用户文件 /
+  `include` 进来的文件 / 环境变量 / 仓库配置,**有优先级、要合并**。
+  自己解析 = 自己复刻一套 git 的合并规则,复刻错了界面就报一个 git 不认的
+  「身份」。而且实测有个坑:**`git config --global user.name` 是空的,
+  但 `git config user.name` 是 `cole`** —— `--global` 会少读一层。
+  所以用 `--list` 这条最全的读法,不用 `--global`。
+- `name` / `email` 是**值**(用户 2026-09-25 拍板显示 —— 见设计稿 §3.3);
+  `*_origin` 是**这个值从哪个文件读到的**(给用户回答「我的身份配在哪」)。
+  没配则值为 `null`。
+- `usable` = `name` 和 `email` **都**非空 —— 这正是 `git commit` 的判据
+  (缺一就以「Author identity unknown」失败)。**`use_config_only` 不算进
+  这个判据** —— 它是「为什么没配就报错」的机制说明,不是「能不能用」本身。
+- 凭据 helper 只报**命令**(`!gh auth git-credential`)——
+  **token / 密码一律不读、不显示**,`gh` 的 `hosts.yml` 碰都不碰。
+  gitconfig 里每个 host 有两条 helper(一条空 = 重置、一条是命令),
+  **空的那条跳过**(见设计稿 §3.3 附近)。
+- `git` 不在时**报错退出、不给 JSON**(空结果会被显示成「没配身份」,
+  而真相是「问不出 git」)。
+
+> **和 §2.4 私有源的分工(设计稿 §3.3 定死)**:这两处**不是重复** ——
+> `private-state.zsh` 的 `git-local` 槽位说的是「**私有源仓库**里有没有
+> `.gitconfig.local` 这一项」(判据是私有源);本脚本说的是
+> 「git **实际**从哪个文件读到了身份」(判据是 git 本身)。
+> **两个问题,两个答案,可以不一样** —— 本机就是「文件在、源里没有」。
+> 所以 macview 的 git 身份页**两个都显示**、各标口径。
+
 ---
 
 ## 三、macview 会改的东西(编辑侧)
