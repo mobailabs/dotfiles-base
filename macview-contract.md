@@ -226,11 +226,11 @@ macview 显示状态靠这些。**格式都是我定的**,改格式 = 改契约�
 - **每个脚本的产出都由 `selfcheck.zsh` 校验**(`check_macview_query_json`):
   跑它的 `--json`、要求合法 JSON、要求必填顶层字段都在。格式漂了会**报错**。
 
-> ⚠️ **实现状态**:下面 2.1–2.11 的脚本**都已经建好并跑通**
-> (2.1–2.10 于 2026-09-24,2.11 于 2026-09-26),它们的 `--json` 产出已进
-> `selfcheck`。2.4 用现成的。字段以本节的 JSON 为准 —— 与早期草稿的字段名
-> (`state` 的取值、`missing` 项的形状等)有出入时,**以本节为准**,
-> 因为本节是从真实产出抄的。
+> ⚠️ **实现状态**:下面 2.1–2.12 的脚本**都已经建好并跑通**
+> (2.1–2.10 于 2026-09-24,2.11 于 2026-09-26,2.12 于 2026-09-26),它们的
+> `--json` 产出已进 `selfcheck`。2.4 用现成的。字段以本节的 JSON 为准 ——
+> 与早期草稿的字段名(`state` 的取值、`missing` 项的形状等)有出入时,
+> **以本节为准**,因为本节是从真实产出抄的。
 
 ### 2.1 前提检查 `scripts/macos/preflight.zsh --json`(✅ 已建)
 
@@ -607,6 +607,89 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
 - **不递归** source 出来的文件(`envconfig` 里会 source `~/.envconfig.local`,
   那是私有源,归 `private-state.zsh`)。三个源文件任一不在时**报错退出、
   不给 JSON**;一条都抽不到时也**报错退出**(同 link-status 纪律)。
+
+### 2.12 SSH 状态 `scripts/macos/ssh-status.zsh --json`(✅ 已建)
+
+回答「我的远程连接身份和配置现在是什么状态」。三块:`keys` / `hosts` /
+`load_point` / `agent`。
+
+> ⚠️ **最要紧的边界:只报「结构」,绝不读密钥内容。** 这是安全边界,单独说清。
+
+**不读密钥内容,具体到三条:**
+
+1. **私钥文件的内容一个字都不读**,只 `stat` 元信息(名字 / 权限 / 大小)。
+   **所以不用 `ssh-keygen -l -f <私钥>`** —— 实测那个命令会**读私钥、
+   从里面算出公钥**。要指纹时只从 `.pub` 取(`ssh-keygen -l -f <公钥>`),
+   只碰公钥文件。**没有配对 `.pub` 的私钥 → 只报名字 + 权限,不报指纹**
+   (宁可少报,不越线)。
+2. **公钥内容也不整条读**,只从 `.pub` 取**类型**(`ssh-ed25519`)和指纹 ——
+   那是「这个 key 是什么」,不是秘密。
+3. **不碰 `known_hosts` 内容**,只报它在不在。
+
+**为什么列 host(旧 SSH 页曾决定不列):**
+
+旧 `SSHPage.swift` 曾决定**不列 host**,理由是「列出来会给人错觉:这一页在管
+那些主机」。那个顾虑**是对的,但不该由脚本承担** —— 脚本只报事实,界面负责
+措辞。而且「我配了哪些主机」正是用户来 SSH 页最想知道的。所以这里只读、只列
+`Host` / `HostName` / `User` / `Port` / `IdentityFile` 这些**配置项**
+(它们是配置文件里的字,不是秘密),**不验证连通性、不发网络、不改那个文件**。
+含通配的 pattern(`Host *`)跳过 —— 那是默认值,不是一台主机。
+
+**为什么 agent 查不出来 ≠ 没有 key:**
+
+`ssh-add -l` 在三种情况下都非零,含义完全不同,所以 `agent.state` 分开报:
+
+| state | 退出码 | 含义 |
+|---|---|---|
+| `running` | 0 | agent 在,且**里面加载了 key** |
+| `empty` | 1 | agent 在,但**里面是空的**(正常,尤其刚开机) |
+| `unreachable` | 2 | **连不上 agent**(没跑 / `SSH_AUTH_SOCK` 没设) |
+| `unknown` | 其它 | 说不清 |
+
+「加载了 0 个」和「问不出 agent」是两件事,不能混(同 §二「没能查 ≠ 没有」)。
+
+**为什么不报「这台 key 连得上 GitHub 吗」:** 那要发网络请求
+(`ssh -T git@github.com`)。本仓库所有 `*-status.zsh` 都是**只读本地、不发
+网络**(§2.1 的精神)。所以不做。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1790412349,
+  "generated_by": "ssh-status.zsh",
+  "keys": [
+    { "name": "id_ed25519", "type": "ssh-ed25519", "mode": "600",
+      "has_public": true, "fingerprint": "SHA256:eh+IAvr3…" },
+    { "name": "id_custom_nopub", "type": null, "mode": "600",
+      "has_public": false, "fingerprint": null }
+  ],
+  "hosts": [
+    { "name": "github.com", "hostname": "github.com", "user": "git",
+      "port": null, "identity_file": "~/.ssh/id_ed25519" },
+    { "name": "work-server", "hostname": "10.0.0.5", "user": "deploy",
+      "port": "2222", "identity_file": "~/.ssh/id_rsa,~/.ssh/id_ed25519" }
+  ],
+  "load_point": {
+    "has_config": true,
+    "has_include": true,
+    "include_targets": ["~/.ssh/config.local"]
+  },
+  "agent": { "state": "empty", "loaded_fingerprints": [] },
+  "counts": { "keys": 3, "hosts": 2 }
+}
+```
+
+- `keys[].name` 的判据是**文件名以 `id_` 开头且不以 `.pub` 结尾**。
+  为什么用名字而不是看内容:**看内容就破了不读私钥的纪律**。代价:用户自己
+  改名的私钥(如 `github_key`)不会列出来 —— 这个代价明说,不藏。
+- `keys[].mode` 是八进制权限字符串(补到 3 位)。**SSH 私钥该是 `600`** ——
+  界面照实显示,`600` 以外的不判(脚本不判好坏,只说事实)。
+- `keys[].type` / `fingerprint` 在没有配对 `.pub` 时是 `null`(**不猜**)。
+- `hosts[].identity_file` 多个时**逗号分隔**(ssh config 允许一个 Host 多行
+  `IdentityFile`)。
+- `load_point` 就是旧 SSH 页唯一能查的那件事:宿主文件里有没有
+  `Include config.local`。`include_targets` 原样记(不展开 `~`)。
+- `counts` 是脚本自报的;界面**以自己的数组长度为准**(同 §2.8)。
 
 ---
 
