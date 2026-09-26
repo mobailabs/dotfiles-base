@@ -413,6 +413,7 @@ check_macview_query_json() {
     "shell-map.zsh|version,checked_at,generated_by,nodes,edges"
     "env-status.zsh|version,checked_at,generated_by,kind,variables,path_segments,counts"
     "ssh-status.zsh|version,checked_at,generated_by,keys,hosts,load_point,agent,counts"
+    "git-config.zsh|version,checked_at,generated_by,sources,include_paths,settings,aliases,all,counts"
   )
 
   local spec name req impl json missing

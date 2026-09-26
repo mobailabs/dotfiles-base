@@ -696,6 +696,72 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
   `Include config.local`。`include_targets` 原样记(不展开 `~`)。
 - `counts` 是脚本自报的;界面**以自己的数组长度为准**(同 §2.8)。
 
+### 2.13 git 配置 `scripts/macos/git-config.zsh --json`(✅ 已建)
+
+回答「这台 Mac 的 git **全局**配置现在是什么样」。**只读** —— 不改任何 git
+配置、不 commit、不发网络、不读 token。
+
+> ⚠️ **和 §2.9 的分工:** §2.9 `git-identity.zsh` 报「身份 + 凭据 helper」;
+> 本脚本报「**配置**」(除身份/凭据之外的那些键)。两块合起来才是框架 §11
+> 的 Git 三块(身份 / 配置 / 凭据)。
+
+**最要紧的决定:问 git,不自己解析 gitconfig。** 同 §2.9 的理由 ——
+gitconfig 的值可能来自系统文件 / 用户文件 / `include` / 环境变量 / 仓库配置,
+**有优先级、要合并**。`git config --list --show-origin` 是 git 自己算完
+优先级、展开完 include 之后的**生效值**,还带「从哪个文件来」。
+
+**⚠️ 固定从 `/` 跑(不在仓库里跑)。** `git config --list` 会把**当前仓库的
+`.git/config` 也算进来**;macview 恰好在某个仓库目录里起脚本时,`all` 就会
+混进那个仓库的本地配置 —— 而这一页要的是**全局**环境。仓库自己的配置属于
+那个仓库(dotfiles 的归 Dotfiles 页,框架 §11)。所以 `cd /` 再跑。
+
+```json
+{
+  "version": 1,
+  "checked_at": 1758700000,
+  "generated_by": "git-config.zsh",
+  "sources": [
+    "/opt/homebrew/etc/gitconfig",
+    "/Users/you/.gitconfig",
+    "/Users/you/.gitconfig.local"
+  ],
+  "include_paths": ["~/.gitconfig.local"],
+  "settings": [
+    { "key": "core.editor", "value": "vim" },
+    { "key": "core.autocrlf", "value": "input" },
+    { "key": "init.defaultbranch", "value": "master" }
+  ],
+  "aliases": [
+    { "name": "gac", "value": "!f() { git add -A && git commit -m \"$*\"; }; f" }
+  ],
+  "all": [
+    { "key": "core.editor", "value": "vim", "origin": "/Users/you/.gitconfig" },
+    { "key": "credential.helper", "value": "osxkeychain",
+      "origin": "/opt/homebrew/etc/gitconfig" }
+  ],
+  "counts": { "settings": 11, "aliases": 1, "all": 62 }
+}
+```
+
+- `sources` 是**有哪些文件在贡献配置**(git 实际读的,去重)。界面据此说
+  「你的配置来自这几个文件」。
+- `settings` 是一组**值得一眼看**的键的值。⚠️ **这份清单是脚本写死的
+  「关键设置」,不是全集**(`NOTABLE_KEYS`)—— 完整在 `all` 里。同一个键被
+  后面覆盖时**取最后一个**(git 的优先级,同 §2.9 取 `user.name`)。
+- `aliases` 是 `alias.*`(去重后取最后一个)。
+- `all` 是**全部生效项**(含被后面覆盖的),每条带 `origin`(来源文件)。
+  它是**给人核对来源**用的 —— 「git 最终用哪个」已由 `settings` 体现。
+- **不报「哪些键是 dotfiles 声明的 vs 用户自己加的」** ——那要拿仓库 gitconfig
+  和本机生效的对账,而对账是**判断**不是**事实**(本机生效的还混了
+  `~/.gitconfig.local` 和环境变量来的)。脚本只报「值 + 从哪个文件来」,
+  「哪个文件是仓库的」留给界面按路径去说(界面能看出 `~/.gitconfig` 是软链)。
+- **凭据 helper 不在 `settings` 的完整体现里** —— `credential.*.helper`
+  (host 级)由 §2.9 负责报,本脚本只把**全局兜底**的 `credential.helper`
+  当一条普通设置报。**token / 密码一律不读**(同 §2.9)。
+- `counts` 是脚本自报的;界面**以自己的数组长度为准**(同 §2.8)。
+- **一条配置都没有 → 报错退出、不给 JSON**(空结果会被显示成「没配任何配置」,
+  而真相可能是 git 坏了;同 §2.9)。
+
 ---
 
 ## 三、macview 会改的东西(编辑侧)
