@@ -67,7 +67,10 @@ if [[ -f "$SUDO_PAM" ]]; then
   backup="${SUDO_PAM}.dotsu-backup.$(date +%Y%m%d-%H%M%S)"
   "${SUDO[@]}" cp -p "$SUDO_PAM" "$backup"
   echo "  原文件已备份到：$backup"
-  "${SUDO[@]}" sh -c "printf '%s\n' '$TID_LINE' >> '$SUDO_PAM'"
+  # ⚠️ 用**位置参数**传值，不把变量拼进内层 shell 的字符串里。
+  # 旧写法 `sh -c "...'$TID_LINE'..."` 一旦 $TID_LINE 含 `'` 或 `$` 就会
+  # 静默截断/错误展开。`sh -c '... "$1" ... "$2"' _ "$a" "$b"` 是标准的安全形式。
+  "${SUDO[@]}" sh -c 'printf "%s\n" "$1" >> "$2"' _ "$TID_LINE" "$SUDO_PAM"
   echo "Done. 出问题可用备份还原：sudo cp $backup $SUDO_PAM"
 else
   echo "! 找不到 ${SUDO_PAM}，跳过（系统结构异常）。" >&2

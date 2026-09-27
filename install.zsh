@@ -336,7 +336,7 @@ main() {
     prefs) "$SCRIPT_DIR/scripts/macos/prefs.zsh" ;;
     link) "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh" ;;
     audit) "$SCRIPT_DIR/scripts/macos/brew-audit.zsh" ;;
-    check) zsh "$SCRIPT_DIR/scripts/macos/selfcheck.zsh" ;;
+    check) "$SCRIPT_DIR/scripts/macos/selfcheck.zsh" ;;
     help|-h|--help) usage ;;
     *)
       echo "Unknown command: $cmd" >&2

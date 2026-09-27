@@ -128,10 +128,16 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 | 文件 | 原来 | 现在 |
 |---|---|---|
 | `scripts/macos/sudo-env.zsh` | ——(**新增**) | 定义 `SUDO`/`sudo_check`/`sudo_authorize` |
-| `prompt-once.zsh:141,149` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
-| `brew-bootstrap.zsh:33,36` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
-| `install.zsh:88,120,274` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
-| `scripts/macos/prefs.d/sudo_touchid.zsh:52,62,64` | 裸 `sudo install/cp/sh` | `"${SUDO[@]}" install/cp/sh` |
+| `prompt-once.zsh` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `brew-bootstrap.zsh` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `install.zsh` | `sudo -n true` / `sudo -v` | `sudo_check` / `sudo_authorize` |
+| `scripts/macos/prefs.d/sudo_touchid.zsh` | 裸 `sudo install/cp/sh` | `"${SUDO[@]}" install/cp/sh` |
+
+> ⚠️ **不写行号**（2026-09-27 review）：早先这里写的是 `prompt-once.zsh:141,149`
+> 这样的精确行号，实际早已漂移到 `149,157` —— 行号随每次编辑失效，维护成本
+> 高于收益。改成**按符号**引用（`sudo_check` / `sudo_authorize` 的名字不会漂）。
+> `selfcheck.zsh` 只核对**文件路径**存在性，核不了行号，所以行号一旦写上就
+> 无人发现它错了。
 
 `sudo-env.zsh` 只在 `SUDO_ASKPASS` 非空**且无 tty**时用 `sudo -A`;
 终端环境下仍是裸 `sudo`（让 sudo 自己弹终端提示）—— 所以**手敲

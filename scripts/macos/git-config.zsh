@@ -329,7 +329,7 @@ render_json() {
     out+="  ],"$'\n'
   fi
 
-  # includes：include.path 链。
+  # includes：include.path 链（输出字段名 `include_paths`）。
   out+="  \"include_paths\": ["
   if (( ${#include_paths[@]} == 0 )); then
     out+="],"$'\n'

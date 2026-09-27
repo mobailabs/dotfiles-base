@@ -160,7 +160,7 @@ render_json() {
   now="$(date +%s)"
 
   local -a entries=()
-  # 抠取失败要让它整体失败（set -e 下 `|| return 1` 会向上传）。
+  # 抠取失败要让它整体失败（显式 `|| return 1` 把失败向调用方传）。
   local raw
   raw="$(extract_links)" || return 1
   entries=("${(@f)raw}")
