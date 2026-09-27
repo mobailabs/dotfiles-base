@@ -42,25 +42,23 @@ Usage: zsh scripts/macos/clone-dotfiles.zsh [options]
 Options:
   --url <地址>   从哪个仓库 clone（默认：$DEFAULT_URL）
   --dest <目录>  clone 到哪（默认：\$HOME/dotfiles）
-  --force        目标目录**存在但为空**时也继续（默认会拒绝，见下）
+                 \`~\` 会展开；软链接会解析后再判（在 \$HOME 下才放行）
   -h, --help     显示这段
 
 退出码：
-  0  成功
-  1  失败（网络 / 目录不安全 / 目标非空 / git 不在）
-  2  用法错（未知参数）
+  0  成功（含「拿到了不像 dotfiles 的东西」那种警告）
+  1  失败（网络 / 目录不安全 / 目标非空或读不了 / git 不在）
+  2  用法错（未知参数 / 空地址 / 地址以 '-' 开头）
 EOF
 }
 
 url="$DEFAULT_URL"
 dest="$HOME/dotfiles"
-force=0
 
 while (( $# > 0 )); do
   case "$1" in
     --url)  url="${2:-}"; shift 2 ;;
     --dest) dest="${2:-}"; shift 2 ;;
-    --force) force=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -73,17 +71,59 @@ if [[ -z "$url" ]]; then
   exit 2
 fi
 
-# 目标绝对化（还没建目录，所以不用 -realpath）
-if [[ "$dest" != /* ]]; then
-  dest="$PWD/$dest"
+# ⚠️ **地址不能以 `-` 开头**（review 抓到）。
+# url 是 `git clone` 的**第一个位置参数**，排在 `--upload-pack` 后面 ——
+# `git clone --upload-pack=<命令> <url> <dest>` 是历史上出名的执行面。
+# 从网页复制地址一般不会这样，但它是个输入，不该指望用户不手滑。
+if [[ "$url" == -* ]]; then
+  echo "Error: 仓库地址不能以 '-' 开头 —— git 会把它当成选项，而不是仓库。" >&2
+  exit 2
 fi
 
-# `assert_safe_dest` 那套检查：绝不 clone 到 / 或 $HOME 本身，绝不带 `..`。
-# 抄 link-dotfiles.zsh 的判据（那里是为了不 rm 错，这里是为了不写错地方）。
 if [[ -z "${HOME:-}" ]]; then
   echo "Error: HOME 没设；不克隆。" >&2
   exit 1
 fi
+
+# ── 目标路径：展开 `~` → 绝对化 → 解析软链接 ─────────────────────────────
+#
+# ⚠️ **三步都要做，而且判据和执行必须用同一个串**（review 一次抓到三处）。
+#
+# 1. **`~` 展开**：任何 mac 用户最自然的输入是 `~/dotfiles`。不展开的话它
+#    既过不了「在 $HOME 下」这条，还会**被当成一个字面量目录名** ——
+#    实测 `--dest '~/x'` 会去 clone 到 `./~/x`，在当前目录里造一个名叫 `~`
+#    的文件夹。`--dest` 目标绝对化那行处理不了它（`~` 不是相对路径，
+#    以 `/` 开头也不行，所以它原样留着）。
+# 2. **绝对化**：相对路径按当前目录解释。GUI 里 CWD 可能是 `/`，
+#    所以相对路径几乎肯定不是用户的意思，但也不该崩。
+# 3. **解析软链接**：`~/link -> /Users/Shared` 时，`~/link/evil` **词法上**
+#    在 $HOME 下，**实际写到 /Users/Shared/evil**。必须解析完再判。
+case "$dest" in
+  "~")      dest="$HOME" ;;
+  "~/"*)    dest="$HOME/${dest#\~/}" ;;
+  /*)       ;;
+  *)        dest="$PWD/$dest" ;;
+esac
+
+# 吸收 `//`、`.`、尾斜杠 —— 不做的话 `/Users/x/` ≠ `/Users/x`，
+# 「目标 = $HOME」那条会被尾斜杠绕过。
+dest="${dest%/}"
+while [[ "$dest" == *//* ]]; do dest="${dest//\/\///}"; done
+
+# 解析**已存在那一段前缀**的软链接。用 python3 是因为 macOS 自带、
+# 而 zsh 没有内建的 realpath。拿不到就**不解析**（下面的判据仍然生效，
+# 只是软链接那条会漏判 —— 宁可漏判也不要在这里崩掉）。
+if command -v python3 >/dev/null 2>&1; then
+  dest="$(python3 -c '
+import os, sys
+p = sys.argv[1]
+# realpath 会解析**已存在**的那一段；后面不存在的部分原样留着。
+print(os.path.realpath(p))
+' "$dest" 2>/dev/null)" || dest="$dest"
+fi
+
+# 判据（抄 link-dotfiles.zsh 的 `assert_safe_dest` —— 那里是为了不 rm 错，
+# 这里是为了不写错地方）。**全部拿解析后的 `dest` 判。**
 if [[ "$dest" == "/" || "$dest" == "$HOME" ]]; then
   echo "Error: 目标目录不安全：$dest" >&2
   exit 1
@@ -91,9 +131,10 @@ fi
 case "/$dest/" in
   *"/../"*) echo "Error: 目标目录不能含 '..'：$dest" >&2; exit 1 ;;
 esac
-if [[ "$dest" != "$HOME"/* && "$dest" != "$HOME" ]]; then
+if [[ "$dest" != "$HOME"/* ]]; then
   # 只允许落在 $HOME 底下 —— clone 到 /tmp 或 /usr/local 明显不是用户的意思。
-  echo "Error: 目标目录必须在 \$HOME 底下：$dest" >&2
+  # ⚠️ 报的是**解析后**的路径：软链接写到哪去了，用户要看得见。
+  echo "Error: 目标目录必须在 \$HOME 底下（它实际指向 $dest）。" >&2
   exit 1
 fi
 
@@ -109,11 +150,17 @@ fi
 
 # ── 目标目录检查（安全的关键一步）─────────────────────────────────────────
 #
-# 三种情况：
-#   · 不在            → 直接 clone
-#   · 在但是空目录     → clone（`--force` 才放行空目录的情况下面注释有解释）
-#   · 在而且非空       → **拒绝**，一个字都不动
-if [[ -e "$dest" ]]; then
+# 四种情况：
+#   · 不在              → 直接 clone
+#   · 在但是空目录       → clone（**没有东西可毁**，所以放行）
+#   · 在而且非空         → **拒绝**，一个字都不动
+#   · 在但读不了         → **拒绝**（见下，这是 review 补的第四种）
+if [[ -e "$dest" || -L "$dest" ]]; then
+  if [[ -L "$dest" && ! -d "$dest" ]]; then
+    # 断掉的软链接：`lstat` 说在、`stat` 说不在。
+    echo "Error: $dest 是断掉的软链接。没动它。" >&2
+    exit 1
+  fi
   if [[ ! -d "$dest" ]]; then
     echo "Error: $dest 已经存在，而且不是目录。没动它。" >&2
     exit 1
@@ -130,12 +177,19 @@ if [[ -e "$dest" ]]; then
     exit 1
   fi
 
-  # 空目录。clone 本身对空目录是安全的，但这里仍然要求 --force ——
-  # 「空」可能是用户刚 mkdir 出来准备放别的东西，误装了不好收拾。
-  if (( ! force )); then
-    echo "Error: $dest 已存在（空目录）。加 --force 才继续。" >&2
+  # ⚠️ **读不出来 ≠ 空**（review 抓到）。glob 在没权限时**不报错**，只是
+  # 匹配不到任何东西 —— 于是「读不了的目录」会被当成「空目录」放行，
+  # 那正是本仓库到处在守的「问不出来 ≠ 没有」。
+  # 所以这里**显式问一次**：能不能列它。
+  if ! ls -A "$dest" >/dev/null 2>&1; then
+    echo "Error: $dest 那个目录我读不了 —— 没法判断里面有没有东西，**没敢动它**。" >&2
     exit 1
   fi
+
+  # 空目录 → 放行。
+  # ⚠️ 早先这里要求 `--force`，而**那个参数从设计上就没被 UI 传过**，
+  # 于是这条拒绝永远走不出去、话术还叫用户「再点一次」—— 点一万次也一样。
+  # 空目录里没有任何东西可毁，放行才是对的。已删 --force（review 抓到）。
 fi
 
 # ── clone ────────────────────────────────────────────────────────────────
