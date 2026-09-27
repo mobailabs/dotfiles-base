@@ -2,18 +2,70 @@
 #
 # 应用 macOS 偏好（defaults write）。
 #
-# 三条设计要点：
+# 三个入口：
+#
+#   zsh scripts/macos/prefs.zsh              应用（逐文件跑 defaults write）
+#   zsh scripts/macos/prefs.zsh --list --json 只**列**主题名（只读，不跑）
+#
+# ── 三条设计要点（应用到系统时）────────────────────────────────────────
 #   1. 逐文件执行，**一个失败不中断其余的**。比如 sudo_touchid 要密码，
 #      你按了取消，不该让 dock / finder 的偏好也白设。
 #   2. 全部幂等 —— defaults write 重复执行结果相同，所以随时可以重跑。
 #   3. 结束时报告成功/失败数量，并给出重跑命令。
 #
 # 注意这里**不用 `set -e`**：那个会让我们刚说的第 1 条失效。
+#
+# ── `--list --json` 为什么在这里、而不是单开脚本 ────────────────────────
+#
+# 「有哪些主题」的真相是**两样东西拼出来的**：`PREF_ORDER` 的顺序 + 磁盘上
+# glob 到的文件（下面 §顺序 那段）。这个逻辑**只能有一份** —— 单开一个
+# `prefs-list.zsh` 就是把「顺序」抄第二遍，两份迟早对不上（而且要人手动同步）。
+# 所以 `--list` 复用**同一份** `PREF_ORDER` 和同一个 glob，只是不往下执行。
+#
+# 它**只读文件名，不读文件内容** —— 不解析 `defaults write` 那些行，所以
+# 不违反契约 §2.7（那里禁的是「复刻文本解析」，不是「列目录」）。
 
 set -uo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${0:A}")/../.." && pwd)"
 PREFS_DIR="$ROOT_DIR/scripts/macos/prefs.d"
+
+# 契约版本。改动**不兼容**的格式时才 +1（加字段不算）。
+CONTRACT_VERSION=1
+
+# ── 参数 ────────────────────────────────────────────────────────────────
+MODE="apply"
+JSON=0
+
+usage() {
+  cat <<'EOF'
+Usage:
+  zsh scripts/macos/prefs.zsh                 应用偏好（会写系统设置）
+  zsh scripts/macos/prefs.zsh --list --json   只列主题名（只读）
+
+  --list     只列主题，不应用（配合 --json 给 macview）
+  --json     把结果打到 stdout
+  -h|--help  这段说明
+
+契约见仓库根目录的 macview-contract.md。
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --list) MODE="list"; shift ;;
+    --json) JSON=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+# `--json` 只在 `--list` 下有意义（应用模式本来就是把过程打到 stdout）。
+if (( JSON == 1 )) && [[ "$MODE" != "list" ]]; then
+  echo "--json 只能配合 --list 用。" >&2
+  usage >&2
+  exit 2
+fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "macOS prefs can only be applied on macOS." >&2
@@ -24,8 +76,6 @@ if [[ ! -d "$PREFS_DIR" ]]; then
   echo "Prefs directory not found: $PREFS_DIR" >&2
   exit 1
 fi
-
-echo "Applying macOS preferences..."
 
 # ── 顺序 ────────────────────────────────────────────────────────────────
 #
@@ -70,9 +120,83 @@ stale=()
 for name in "${PREF_ORDER[@]}"; do
   (( ${discovered[(I)$name]} )) || stale+=("$name")
 done
+
+# ── `--list`：只报主题名，不跑 ──────────────────────────────────────────
+if [[ "$MODE" == "list" ]]; then
+  json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+  }
+
+  if (( JSON == 0 )); then
+    # 人肉看的时候：一行一个，带序号。
+    local i=0
+    for name in "${prefs[@]}"; do
+      i=$((i + 1))
+      printf '%2d  %s\n' "$i" "$name"
+    done
+    exit 0
+  fi
+
+  now=$(date +%s)
+
+  # 拼 JSON 数组。⚠️ 所有 `local` 在循环外一次声明 —— zsh 在「会跑两遍以上
+  # 的循环里」再 `local` 已有值的变量，会把 `x=值` 打到 stdout，污染 JSON。
+  # 而且变量名**要避开脚本里已用过的全局名**（`name` 在上面已做全局循环变量，
+  # 这里再 `local name` 会打印 `name=sudo_touchid.zsh` —— 踩过）。
+  local out="" theme_rows="" tname in_order first=1
+  for tname in "${prefs[@]}"; do
+    (( first )) || theme_rows+=","$'\n'
+    first=0
+    # `in_order` = 这个名字在 PREF_ORDER 里点过名（即顺序是显式的，不是兜底）。
+    in_order="false"
+    (( ${PREF_ORDER[(I)$tname]} )) && in_order="true"
+    theme_rows+="    { \"name\": \"$(json_escape "$tname")\", \"in_order\": $in_order }"
+  done
+
+  local stale_rows="" sfirst=1 sname
+  for sname in "${stale[@]}"; do
+    (( sfirst )) || stale_rows+=", "
+    sfirst=0
+    stale_rows+="\"$(json_escape "$sname")\""
+  done
+
+  out+="{"$'\n'
+  out+="  \"version\": $CONTRACT_VERSION,"$'\n'
+  out+="  \"checked_at\": $now,"$'\n'
+  out+="  \"generated_by\": \"prefs.zsh\","$'\n'
+  out+="  \"themes\": ["$'\n'
+  out+="$theme_rows"$'\n'
+  out+="  ],"$'\n'
+  # `stale` = 顺序表里点名了、磁盘上没有的（改名/删了）。**这是异常**，
+  # 和 `unordered`（新加、还没排顺序，只是顺序靠后）性质不同。
+  out+="  \"stale\": [$stale_rows]"$'\n'
+  out+="}"
+
+  # 自校验：JSON 必须能被解析。解析不了就**不输出**，免得 macview 收到坏数据。
+  if command -v python3 >/dev/null 2>&1; then
+    if ! printf '%s' "$out" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+      echo "Error: prefs --list 产出的 JSON 解析不了（脚本有 bug）。" >&2
+      exit 1
+    fi
+  fi
+
+  printf '%s\n' "$out"
+  exit 0
+fi
+
+# ── 应用 ────────────────────────────────────────────────────────────────
+
 if (( ${#stale[@]} > 0 )); then
   echo "  ! 顺序表里的这些文件不在 prefs.d（被删或改名了？）：${(j:、:)stale}" >&2
 fi
+
+echo "Applying macOS preferences..."
 
 ok=0
 failed=()
