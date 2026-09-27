@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 #
-# 卸**一个** homebrew formula。
+# 卸**一个** homebrew formula 或 cask。
 #
 # 契约见 macview-contract.md 第 1 节（执行侧命令表）—— 建时新增一行。
 #
@@ -29,10 +29,11 @@
 # ## 它做什么（安全壳，比「套一层 brew uninstall」多）
 #
 #   1. 补 homebrew 的 PATH（`brew-env.zsh`，同 brew-audit）
-#   2. 参数必须**正好一个** formula 名；0 个或 ≥2 个 → 报错退出（**不猜**）
+#   2. 参数必须**正好一个**包名；0 个或 ≥2 个 → 报错退出（**不猜**）
 #   3. 名字以 `-` 开头 → 拒绝（防「把选项当包名」，如 `--force`）
-#   4. 名字不在「已装 formula」里 → 报错退出（提前说清，不等 brew 报）
-#   5. `brew uninstall <名字>` —— **不覆盖 brew 的判断**
+#   4. （可选）`--cask`：明确指定这是 cask —— 见「formula 和 cask 的分别」
+#   5. 名字不在「已装的 formula/cask」里 → 报错退出（提前说清，不等 brew 报）
+#   6. `brew uninstall [--cask] <名字>` —— **不覆盖 brew 的判断**
 #
 # ## 它**不做**什么（都是刻意的，不是漏了）
 #
@@ -42,18 +43,39 @@
 #     不替用户强行卸掉。
 #   · **不跑 `brew autoremove`** —— 那会连带清「没人依赖的包」= 替用户判断
 #     「这些也没用了」，越界。要清是用户自己在终端的事。
-#   · **不碰 cask** —— 见 §「只做 formula」。
 #
-# ## 只做 formula，不碰 cask
+# ## formula 和 cask 的分别（2026-09-27 加 cask）
 #
-# cask 是 **GUI app**：`brew uninstall --cask` 可能删掉 app 的用户数据 /
-# 配置。后果比 formula 重得多，而且 brew 不怎么拦。所以这一版**明确不做**
-# cask 卸载 —— 要做要单独想清楚数据怎么办。
-# （`brew-audit.zsh` 的 `extra` 也只算 formula，同一个理由。）
+# 之前这一版**明确不做 cask**，理由是「cask 是 GUI app，`brew uninstall
+# --cask` 可能删掉用户数据」。查清 Homebrew 文档后，这个担心要**分两半**：
+#
+#   · **普通 `brew uninstall --cask X`**：只跑 cask **自己声明的 `uninstall`
+#     段**（多数是「删 `/Applications/X.app` + 摘符号链接」），**不碰**
+#     `~/Library` 的偏好/缓存 —— 和 formula 同量级。
+#   · **`brew uninstall --zap --cask X`**：额外跑 `zap` 段，那才删
+#     `~/Library` 的偏好/缓存**以及共享资源**（Homebrew 文档原话：
+#     「可能删掉应用之间共享的文件」）。
+#
+# 所以规矩是：**cask 可以卸，但只走普通 uninstall，绝不 `--zap`。**
+# 要连偏好一起清，是用户自己在终端跑 `brew uninstall --zap` 的事 ——
+# 那是个**判断**（哪些偏好是垃圾），macview 不做。
+#
+# ### `--cask` 开关：为什么明着要、不猜
+#
+# 同名包在 formula 和 cask 里都可能存在。**猜**（「formula 里没有就去 cask
+# 找」）会把用户想卸的 formula 变成卸一个同名 cask —— 静默的错。所以：
+#
+#   · 不给 `--cask` → 只认 formula（**保持旧行为**，macview 的 formula
+#     按钮照旧）；
+#   · 给 `--cask` → 只认 cask。
+#
+# 界面（macview）从 `extra` 的 `kind` 字段知道该给哪个，**按钮绑死** ——
+# 用户不会看到「按了 formula 结果卸了 cask」。
 #
 # 用法：
 #   zsh scripts/macos/brew-uninstall.zsh <formula>
-#   DRY_RUN=1 zsh scripts/macos/brew-uninstall.zsh <formula>   # 只看会做什么
+#   zsh scripts/macos/brew-uninstall.zsh --cask <cask>
+#   DRY_RUN=1 zsh scripts/macos/brew-uninstall.zsh [--cask] <名字>   # 只看会做什么
 
 set -uo pipefail
 
@@ -63,9 +85,14 @@ log() { echo "[uninstall] $*"; }
 
 usage() {
   cat <<'EOF'
-Usage: zsh scripts/macos/brew-uninstall.zsh <formula>
+Usage:
+  zsh scripts/macos/brew-uninstall.zsh <formula>
+  zsh scripts/macos/brew-uninstall.zsh --cask <cask>
 
-  卸载**一个** homebrew formula。一次一个，名字必须显式给。
+  卸载**一个** homebrew formula 或 cask。一次一个，名字必须显式给。
+
+  --cask      卸载的是 cask（GUI app）。不给则当 formula。
+              ⚠️ 只跑普通 uninstall，**绝不 --zap**（不删偏好/缓存）。
 
   DRY_RUN=1   只打印将要做什么，不真的卸。
 
@@ -75,24 +102,37 @@ EOF
 
 # ── 参数 ────────────────────────────────────────────────────────────────
 #
-# **正好一个**位置参数。多一个、少一个都报错 —— 见文件头的「一次只卸一个」。
+# **是否 cask** 由 `--cask` 明说，其余位置参数**正好一个**。
+# 多一个、少一个都报错 —— 见文件头的「一次只卸一个」。
 # 这里刻意**不**支持 `--all` / 通配 / 从清单读 —— 那些都是「批量判断」，
 # 越界（框架 §15）。
-if (( $# == 0 )); then
-  echo "必须指定一个 formula 名。" >&2
+KIND="formula"
+POSITIONAL=()
+while (( $# > 0 )); do
+  case "$1" in
+    --cask) KIND="cask"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "不认识的选项：$1" >&2; usage >&2; exit 2 ;;
+    *) POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+if (( ${#POSITIONAL[@]} == 0 )); then
+  echo "必须指定一个包名。" >&2
   usage >&2
   exit 2
 fi
-if (( $# > 1 )); then
-  echo "一次只能卸一个 —— 收到 $# 个参数。逐个来。" >&2
+if (( ${#POSITIONAL[@]} > 1 )); then
+  echo "一次只能卸一个 —— 收到 ${#POSITIONAL[@]} 个参数。逐个来。" >&2
   usage >&2
   exit 2
 fi
 
-PKG="$1"
+PKG="${POSITIONAL[1]}"
 
-# 名字以 `-` 开头 = 像选项（`--force` / `--cask` 之类）。
+# 名字以 `-` 开头 = 像选项（`--force` / `--zap` 之类）。
 # 直接拒绝：绝不让「用户想卸 `X`」变成「brew 按某个选项干别的」。
+# ⚠️ 这也**堵死了 `--zap` 的旁路** —— 就算有人把 `--zap` 塞进名字，也拒。
 if [[ "$PKG" == -* ]]; then
   echo "包名不能以 '-' 开头（收到 '$PKG'）—— 那看起来是个选项。" >&2
   exit 2
@@ -122,21 +162,34 @@ fi
 # ── 确认它真的装着 ───────────────────────────────────────────────────────
 #
 # 提前判，给一句人话 —— 而不是把 brew 的原始报错直接甩给用户。
-# ⚠️ **只查 formula**：`brew list --formula` 不含 cask。这是**刻意的** ——
-# 本脚本只做 formula（见文件头）。所以一个 cask 名会走到下面「没装」的分支 ——
-# 报错里说清「只做 formula」，免得用户以为是自己拼错了。
-if ! brew list --formula "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
-  if brew list --cask "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
-    echo "[uninstall] '$PKG_BASE' 是个 **cask**（GUI app），本脚本只卸 formula。" >&2
-    echo "[uninstall] cask 卸载要单独做（数据风险，见脚本头）—— 这一版不做。" >&2
+#
+# ⚠️ **按 KIND 各查各的**（`--formula` vs `--cask`）—— 两个列表互不包含。
+# 若指定 `--cask` 而名字其实是个 formula，也**不自动改判** —— 报错说清
+# 让用户重来（见文件头「`--cask` 开关：为什么明着要、不猜」）。
+if [[ "$KIND" == "cask" ]]; then
+  if ! brew list --cask "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
+    if brew list --formula "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
+      echo "[uninstall] '$PKG_BASE' 是个 **formula**，但你指定了 --cask。" >&2
+      echo "[uninstall] 去掉 --cask 重来（本脚本不猜你想卸哪个）。" >&2
+      exit 1
+    fi
+    echo "[uninstall] '$PKG_BASE' 没装（不在已装 cask 里），不用卸。" >&2
     exit 1
   fi
-  echo "[uninstall] '$PKG_BASE' 没装（不在已装 formula 里），不用卸。" >&2
-  exit 1
+else
+  if ! brew list --formula "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
+    if brew list --cask "$PKG_BASE" >/dev/null 2>&1 </dev/null; then
+      echo "[uninstall] '$PKG_BASE' 是个 **cask**（GUI app）。" >&2
+      echo "[uninstall] 要卸它请加 --cask：zsh scripts/macos/brew-uninstall.zsh --cask $PKG_BASE" >&2
+      exit 1
+    fi
+    echo "[uninstall] '$PKG_BASE' 没装（不在已装 formula 里），不用卸。" >&2
+    exit 1
+  fi
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  log "would uninstall formula: $PKG_BASE"
+  log "would uninstall $KIND: $PKG_BASE"
   exit 0
 fi
 
@@ -145,11 +198,25 @@ fi
 # ⚠️ **不覆盖 brew 的判断**：不给 `--force` / `--ignore-dependencies`。
 # 有别的包依赖它时，brew 会**拒绝**并列出「谁依赖它」—— 我们照实转达，
 # 让用户自己决定（先卸依赖它的、或留着）。这是**brew 的判断，不是我们的**。
-log "uninstalling formula: $PKG_BASE"
-if ! brew uninstall "$PKG_BASE" </dev/null; then
-  echo "[uninstall] brew 拒绝了（可能被别的包依赖，或它自己报的别的原因）。" >&2
-  echo "[uninstall] 看上面 brew 的原话决定下一步；本脚本不替你做主。" >&2
-  exit 1
+#
+# ⚠️ **`--cask` 时也绝不加 `--zap`** —— 那才会删 `~/Library` 的偏好/缓存
+# 以及共享资源（见文件头「formula 和 cask 的分别」）。
+log "uninstalling $KIND: $PKG_BASE"
+if [[ "$KIND" == "cask" ]]; then
+  if ! brew uninstall --cask "$PKG_BASE" </dev/null; then
+    echo "[uninstall] brew 拒绝了。看上面 brew 的原话决定下一步；本脚本不替你做主。" >&2
+    echo "[uninstall] 说明：**没有**用 --zap —— 你的偏好/缓存都还在。" >&2
+    exit 1
+  fi
+  log "已卸载 cask：$PKG_BASE"
+  echo "[uninstall] 注意：只删了 app 本身。`~/Library` 里的偏好/数据还在 ——" >&2
+  echo "[uninstall] 要连那些一起清，是你在终端跑 'brew uninstall --zap $PKG_BASE' 的事" >&2
+  echo "[uninstall] （那是判断「哪些偏好是垃圾」,macview 不做）。" >&2
+else
+  if ! brew uninstall "$PKG_BASE" </dev/null; then
+    echo "[uninstall] brew 拒绝了（可能被别的包依赖，或它自己报的别的原因）。" >&2
+    echo "[uninstall] 看上面 brew 的原话决定下一步；本脚本不替你做主。" >&2
+    exit 1
+  fi
+  log "已卸载：$PKG_BASE"
 fi
-
-log "已卸载：$PKG_BASE"

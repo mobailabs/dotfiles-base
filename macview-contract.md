@@ -65,7 +65,7 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 | 对账(只读) | `zsh install.zsh audit` | 否 | **0 / 1** | ✅ 已有 |
 | 仓库自检(只读) | `zsh install.zsh check` | 否 | 0 / 1 | ✅ 已有 |
 | 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 否 | 0 / 1 | ✅ 已有 |
-| **卸载一个软件** | `zsh scripts/macos/brew-uninstall.zsh <formula>` | 否 | 0 / 1 | ✅ 已建（见 §1.3） |
+| **卸载一个软件** | `zsh scripts/macos/brew-uninstall.zsh [--cask] <名字>` | 否 | 0 / 1 | ✅ 已建（见 §1.3） |
 | 链私有 overlay | **不做** —— 见 §3.4（走 `install.zsh base`） | 否 | — | ⛔ 已定不做 |
 
 **契约**:上表 ✅ 的命令**以后不改名、不改语义**。
@@ -206,20 +206,28 @@ macview **不能**把「非零 = 出错」当通则。判据是:
 
 ### 1.3 「卸载一个软件」的边界 —— 只卸一个,不批量
 
-`brew-uninstall.zsh <formula>` 卸**一个** formula。三条边界(都是刻意的):
+`brew-uninstall.zsh <formula>` 卸**一个** formula;加 `--cask` 则卸**一个** cask。
+四条边界(都是刻意的):
 
-1. **只做 formula,不碰 cask。** cask 是 GUI app,`brew uninstall --cask`
-   可能删掉 app 的用户数据/配置,后果重得多。要做单独设计。
+1. **cask 只走普通 uninstall,绝不 `--zap`**(2026-09-27 加 cask)。查清
+   Homebrew 文档后分清两件事:普通 `brew uninstall --cask X` 只跑 cask
+   自己声明的 `uninstall` 段(删 `.app` + 摘符号链接),**不碰** `~/Library`
+   的偏好/缓存;只有 `--zap` 才删偏好/缓存**以及共享资源**。所以 cask 能卸,
+   但**绝不给 `--zap`**。要连偏好一起清,是用户在终端的事(那是**判断**)。
 2. **一次一个,名字必须显式给。** 没有 `--all`、不读清单、不支持通配。
    macview 逐个列、每项一个按钮 —— **点哪个卸哪个,这个动作本身就是
    用户在判断**。**不做「一键清理多出的包」** —— 那是框架 §15 禁止的
    「UI 承诺底层没有的判断能力」(见下)。
-3. **不覆盖 brew 的判断。** 不加 `--zap` / `--force` / `--ignore-dependencies`,
+3. **cask 与否由 `--cask` 明说,不猜。** 同名包在 formula 和 cask 里都可能
+   存在。猜(「formula 里没有就去 cask 找」)会把用户想卸的 formula 变成
+   卸一个同名 cask —— 静默的错。界面从 `extra` 的 `kind` 知道给哪个按钮,
+   **按钮绑死**,用户不会看到「按了 formula 结果卸了 cask」。
+4. **不覆盖 brew 的判断。** 不加 `--zap` / `--force` / `--ignore-dependencies`,
    不跑 `brew autoremove`。被别的包依赖时 **brew 会拒绝并列出谁依赖它** ——
    脚本**原样转达**,不替用户强行卸。
 
 > ⚠️ **为什么不能有「一键清理」。** `brew-audit.zsh` 的 `extra`(装了但清单里
-> 没有的 formula)**不等于「没用的」** —— 里面混着:①别的包的依赖、②用户手动
+> 没有的 formula/cask)**不等于「没用的」** —— 里面混着:①别的包的依赖、②用户手动
 > 装想留的、③真不需要的。脚本和界面**都分不出这三类**(分它们要读依赖图 +
 > 猜意图 = **判断**)。所以 macview 只能:照实列出 + 一个只卸这一个的按钮,
 > **不画勾、不标「可安全卸载」**。
@@ -330,13 +338,19 @@ macview 启动时调一次。回答「这台机器能不能开工」。
   "installed": { "cli": 81, "cask": 2 },
   "missing":   [ { "label": "公共 / formulae", "kind": "formula", "name": "jq" } ],
   "duplicate": [ { "label": "公共 / casks",     "kind": "cask",    "name": "bar" } ],
-  "extra":     [ { "kind": "formula", "name": "foo" } ]
+  "extra":     [ { "kind": "formula", "name": "foo" },
+                 { "kind": "cask",    "name": "bar" } ]
 }
 ```
 
 - `label` 是给人看的清单名前缀(带中文),`kind` 是机器判据(`formula` / `cask`)。
   两者都留 —— 因为 label 的中文**将来可能改字**,不能靠它反推 kind。
-- `extra` **只有 formula**(cask 太多系统自带/手动装的,报了是噪音)。
+- `extra` **formula 和 cask 都报**(2026-09-27 改)。以前只报 formula,
+  理由是「cask 太多系统自带/手动装的」—— 但那让 cask 在界面上**完全看不见**,
+  用户装了个 cask 没在清单里也无从卸。现在两边都列,`kind` 决定界面给哪个按钮
+  (formula 按钮调不给 `--cask`;cask 按钮调加 `--cask` —— 见 §1.3)。
+  ⚠️ 「多出」**不等于**「该卸」(cask 里系统自带/手动装的更多) —— 界面照实列、
+  **不画勾、不标「可安全卸载」**。
 - 退出码语义与文本模式一致:有缺失 → 1。
 - ⚠️ 已知差异:只覆盖公共仓库的 2 份清单,私有源的 `*.private.txt` 读不到。
 

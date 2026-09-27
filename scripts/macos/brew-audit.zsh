@@ -142,7 +142,7 @@ compute_audit() {
   # `PATH` 是同一个数组。`local path`（不带值）会把 PATH 清空，之后所有
   # `command brew` 都变成 `command not found`，而**不报错**。
   # 所以这里叫 `list_path`。（selfcheck 的 check_no_local_path 会拦这个。）
-  local -a declared_all=() names=() seen=()
+  local -a names=() seen=()
   local spec label kind list_path name installed_set dup_key
 
   _missing=()
@@ -194,22 +194,61 @@ compute_audit() {
       else
         _missing+=("$label: $name")
       fi
-      declared_all+=("$name")
     done
   done
 
-  # 「多出」：这台装了、清单里没有。只对 formula 做（cask 太多系统自带/手动装的）。
+  # 「多出」：这台装了、清单里没有。
+  #
+  # ⚠️ **formula 和 cask 都算**（2026-09-27 改）。
+  #
+  # 以前只算 formula，理由是「cask 太多系统自带/手动装的」。但那让 cask
+  # 在 macview 里**完全看不见** —— 用户装了个 cask、清单里没有，界面不显示、
+  # 也就无从卸载。现在两边都列，**照实列、不画勾**（和 formula 一个规矩：
+  # 「多出」不等于「该卸」，见 brew-uninstall.zsh 的文件头）。
+  #
+  # ⚠️ `declared_all` 里存的是**名字**、**不含 kind** —— formula 和 cask
+  # 理论上可能同名。所以判定要**分 kind 各查各的**，不能用一个大集合
+  # （那会把「和某个 cask 同名的 formula」误判成「已声明」）。
+  local -a declared_cli_names=() declared_cask_names=()
+  local spec2 kind2 list_path2 n2
+  for spec2 in "${specs[@]}"; do
+    kind2="${${spec2#*|}%%|*}"
+    list_path2="${spec2##*|}"
+    [[ -f "$list_path2" ]] || continue
+    while IFS= read -r n2; do
+      [[ -n "$n2" ]] || continue
+      if [[ "$kind2" == "cask" ]]; then
+        declared_cask_names+=("$(basename_of "$n2")")
+      else
+        declared_cli_names+=("$(basename_of "$n2")")
+      fi
+    done < <(read_declared "$list_path2")
+  done
+
+  # `_extras` 元素形如 `kind\tname` —— JSON 要分 kind（界面靠它决定怎么卸）。
   local inst
   while IFS= read -r inst; do
     [[ -n "$inst" ]] || continue
-    if (( ! ${declared_all[(I)$inst]} )); then
-      _extras+=("$inst")
+    if (( ! ${declared_cli_names[(I)$inst]} )); then
+      _extras+=("formula"$'\t'"$inst")
     fi
   done <<<"$installed_formulae"
+
+  while IFS= read -r inst; do
+    [[ -n "$inst" ]] || continue
+    if (( ! ${declared_cask_names[(I)$inst]} )); then
+      _extras+=("cask"$'\t'"$inst")
+    fi
+  done <<<"$installed_casks"
 }
 
 # ── 文本输出（原来的样子，保留）────────────────────────────────────────
 render_text() {
+  # ⚠️ `item` 在下面「多出」那段用到。**在函数开头声明一次** ——
+  # 在会跑多遍的循环体里 `local` 已有值的变量，zsh 会把 `x=值` 打到 stdout
+  # （本文件 compute_audit 那段记着这个真坑）。`ex_kind` / `ex_name` 同理。
+  local item ex_kind ex_name
+
   echo "== 清单里声明、但没装 =="
   if (( ${#_missing[@]} == 0 )); then
     echo "  （无）"
@@ -226,11 +265,21 @@ render_text() {
   fi
 
   echo
-  echo "== 这台装了、清单里没有（formula，仅供参考，不一定要加）=="
+  echo "== 这台装了、清单里没有（formula + cask，仅供参考，不一定要卸）=="
   if (( ${#_extras[@]} == 0 )); then
     echo "  （无）"
   else
-    printf '  %s\n' "${_extras[@]}"
+    # `_extras` 元素是 `kind\tname` —— 文本模式给 cask 加个后缀，
+    # 一眼能区分（cask 卸载的后果和 formula 不同，见 brew-uninstall.zsh）。
+    for item in "${_extras[@]}"; do
+      ex_kind="${item%%$'\t'*}"
+      ex_name="${item#*$'\t'}"
+      if [[ "$ex_kind" == "cask" ]]; then
+        printf '  %s  (cask)\n' "$ex_name"
+      else
+        printf '  %s\n' "$ex_name"
+      fi
+    done
   fi
 
   echo
@@ -294,13 +343,17 @@ render_json() {
   out+="$rows"$'\n'
   out+="  ],"$'\n'
 
-  # ── extra（formula）──
+  # ── extra（formula + cask）──
+  # `_extras` 元素是 `kind\tname`。kind 直接写进 JSON —— 界面靠它决定
+  # 「按 formula 卸」还是「按 cask 卸」（两条卸载路径的警告措辞不同）。
   rows=""
   first=1
-  for name in "${_extras[@]}"; do
+  for item in "${_extras[@]}"; do
+    kind="${item%%$'\t'*}"
+    name="${item#*$'\t'}"
     (( first )) || rows+=","$'\n'
     first=0
-    rows+="    { \"kind\": \"formula\", \"name\": \"$(json_escape "$name")\" }"
+    rows+="    { \"kind\": \"$kind\", \"name\": \"$(json_escape "$name")\" }"
   done
   out+="  \"extra\": ["$'\n'
   out+="$rows"$'\n'
