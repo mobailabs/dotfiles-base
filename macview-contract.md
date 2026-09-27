@@ -61,6 +61,8 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 | 一键配置(全套) | `zsh install.zsh` | **是** | 0 / 1 | ✅ 已有 |
 | 只链接配置 | `zsh install.zsh link` | 否 | 0 | ✅ 已有 |
 | 只应用偏好 | `zsh install.zsh prefs` | **是** | 0 / 1 | ✅ 已有 |
+| 应用偏好（**不**提权的那部分） | `zsh scripts/macos/prefs.zsh --no-sudo` | 否 | 0 / 1 | ✅ 已建（见 §2.7） |
+| 应用偏好（只跑某个主题） | `zsh scripts/macos/prefs.zsh --only <主题>` | 看主题 | 0 / 1 / 2 | ✅ 已建（见 §2.7） |
 | 装软件(brew+cask) | `zsh scripts/macos/brew-install.zsh` | **是** | 0 / 1 | ✅ 已有 |
 | 对账(只读) | `zsh install.zsh audit` | 否 | **0 / 1** | ✅ 已有 |
 | 仓库自检(只读) | `zsh install.zsh check` | 否 | 0 / 1 | ✅ 已有 |
@@ -438,8 +440,8 @@ mise 声明的工具 vs 实装。
   "checked_at": 1790502798,
   "generated_by": "prefs.zsh",
   "themes": [
-    { "name": "dock.zsh", "in_order": true },
-    { "name": "finder.zsh", "in_order": true }
+    { "name": "dock.zsh", "in_order": true, "needs_sudo": false },
+    { "name": "sudo_touchid.zsh", "in_order": true, "needs_sudo": true }
   ],
   "stale": []
 }
@@ -449,10 +451,37 @@ mise 声明的工具 vs 实装。
   没排顺序的兜底在后),不是举例。
 - `in_order`:`false` = 这个文件在磁盘上、但**没排进 `PREF_ORDER`**
   (新加的、还没排顺序)——它**会跑**,只是排在最后。
+- `needs_sudo`(2026-09-27 加):`true` = 应用这个主题要管理员权限
+  (写在 `PREF_SUDO` 里,当前只有 `sudo_touchid.zsh`)。**macview 靠它决定
+  主题归哪个按钮**,不写死名字 —— 改主题只改脚本一处。
 - `stale`:顺序表里点名了、磁盘上**没有**的(改名/删了)。**这是异常**,
   和 `in_order:false` 性质不同。
 - ⚠️ **复用同一份 `PREF_ORDER` + 同一个 glob**,不另抄一份顺序 ——
   单开脚本会把「顺序」抄第二遍,两份迟早对不上。
+
+#### 提权拆细:两个应用入口(2026-09-27 加)
+
+`prefs.zsh` 多了两个应用模式(见 §一 表):
+
+| 命令 | 跑哪些主题 | 要提权? |
+|---|---|---|
+| `zsh scripts/macos/prefs.zsh --no-sudo` | **除 `PREF_SUDO` 外的全部** | **否** |
+| `zsh scripts/macos/prefs.zsh --only <主题>` | 只跑点名的(可重复) | 看主题 |
+| `zsh install.zsh prefs`(原样保留) | 全部 | **是** |
+
+**为什么加**:原来整条 `install.zsh prefs` 都走提权,于是 8 个只跑
+`defaults write` 的主题也先弹密码框 —— 这是已知的**粗粒度**。拆开后,
+macview 的「应用系统设置」走 `--no-sudo`(**不弹密码框**),
+「Touch ID for sudo」单走 `--only sudo_touchid.zsh`(**才**弹)。
+
+- `--no-sudo` 会**打印跳过了哪些 + 怎么单独跑它们** —— 跳过必须是
+  **说出来的**,不能静默少跑。
+- `--only` 认不出主题名时**退出 2 并列出可用名**,不静默跑空
+  (跑空会让人以为"跑过了、生效了")。
+- 两者互斥(一个"除需提权的全跑"、一个"只跑点名的",一起给会让人搞不清)。
+- ⚠️ **`PREF_SUDO` 是显式声明,不是 grep 文件内容** —— grep 同样是"复刻
+  文本解析"(§六所禁),且注释里出现 "sudo" 就误判。「哪个主题要提权」是
+  **人的事实**,只能人写,写在一处。
 
 #### 为什么还是「没有四态结论」
 

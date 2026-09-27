@@ -2,10 +2,12 @@
 #
 # 应用 macOS 偏好（defaults write）。
 #
-# 三个入口：
+# 入口：
 #
-#   zsh scripts/macos/prefs.zsh              应用（逐文件跑 defaults write）
-#   zsh scripts/macos/prefs.zsh --list --json 只**列**主题名（只读，不跑）
+#   zsh scripts/macos/prefs.zsh                应用（逐文件跑 defaults write）
+#   zsh scripts/macos/prefs.zsh --no-sudo      应用，但**跳过需要管理员权限的主题**
+#   zsh scripts/macos/prefs.zsh --only <主题>  只应用点名的那一个（可重复）
+#   zsh scripts/macos/prefs.zsh --list --json  只**列**主题名（只读，不跑）
 #
 # ── 三条设计要点（应用到系统时）────────────────────────────────────────
 #   1. 逐文件执行，**一个失败不中断其余的**。比如 sudo_touchid 要密码，
@@ -36,15 +38,23 @@ CONTRACT_VERSION=1
 # ── 参数 ────────────────────────────────────────────────────────────────
 MODE="apply"
 JSON=0
+# `--no-sudo`：跳过需要管理员权限的主题（见 §提权拆细）。
+NO_SUDO=0
+# `--only <主题>` 可重复；空 = 全都跑。见 §提权拆细。
+ONLY=()
 
 usage() {
   cat <<'EOF'
 Usage:
   zsh scripts/macos/prefs.zsh                 应用偏好（会写系统设置）
+  zsh scripts/macos/prefs.zsh --no-sudo       应用，但跳过需要管理员权限的主题
+  zsh scripts/macos/prefs.zsh --only <主题>   只应用点名的主题（可重复）
   zsh scripts/macos/prefs.zsh --list --json   只列主题名（只读）
 
+  --no-sudo  跳过需要管理员权限的主题（不弹密码，用于「先跑不用密码的那些」）
+  --only X   只跑主题 X；可给多次。名字就是 prefs.d 下的文件名
   --list     只列主题，不应用（配合 --json 给 macview）
-  --json     把结果打到 stdout
+  --json     把结果打到 stdout（仅配合 --list）
   -h|--help  这段说明
 
 契约见仓库根目录的 macview-contract.md。
@@ -55,6 +65,10 @@ while (( $# > 0 )); do
   case "$1" in
     --list) MODE="list"; shift ;;
     --json) JSON=1; shift ;;
+    --no-sudo) NO_SUDO=1; shift ;;
+    --only)
+      [[ -n "${2:-}" ]] || { echo "--only 后面要跟一个主题名。" >&2; exit 2; }
+      ONLY+=("$2"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -64,6 +78,12 @@ done
 if (( JSON == 1 )) && [[ "$MODE" != "list" ]]; then
   echo "--json 只能配合 --list 用。" >&2
   usage >&2
+  exit 2
+fi
+
+# `--no-sudo` 和 `--only` 是两套用法，一起给会让人搞不懂到底跑哪些。
+if (( NO_SUDO == 1 )) && (( ${#ONLY[@]} > 0 )); then
+  echo "--no-sudo 和 --only 不能一起用（前者是「除需提权的外全跑」，后者是「只跑点名的」）。" >&2
   exit 2
 fi
 
@@ -98,6 +118,22 @@ PREF_ORDER=(
   sudo_touchid.zsh
 )
 
+# ── 提权拆细：哪些主题要管理员权限 ──────────────────────────────────────
+#
+# `sudo_touchid.zsh` 要写 `/etc/pam.d/sudo_local`（root 所有）→ 要管理员权限。
+# 其余 8 个只跑 `defaults write`（写当前用户自己的域）→ **不需要**。
+#
+# ⚠️ **这里是显式声明，不是 grep 文件内容。**契约 §六 明说不去「复刻文本
+# 解析」`prefs.d/*.zsh` —— 在这儿 grep `sudo` 同样是复刻解析，且会误判
+# （注释里出现 "sudo" 就中招）。「哪个主题要提权」是**人的事实**，只能人写；
+# 写在这儿 = 只此一份，改一处。
+#
+# 用途：`--no-sudo` 跳过它们，让 macview 的「应用系统设置」不再为这 8 个
+# 也弹密码框（设计见系统页 §10.3）。
+PREF_SUDO=(
+  sudo_touchid.zsh
+)
+
 # glob 是唯一的「有哪些要跑」的事实来源。
 discovered=()
 for f in "$PREFS_DIR"/*.zsh(N); do
@@ -120,6 +156,55 @@ stale=()
 for name in "${PREF_ORDER[@]}"; do
   (( ${discovered[(I)$name]} )) || stale+=("$name")
 done
+
+# ── 提权拆细：按 `--no-sudo` / `--only` 收窄要跑的主题 ──────────────────
+#
+# 只有应用模式需要（`--list` 报的是**全部**主题，不受这俩开关影响 ——
+# 「有哪些主题」和「这次跑哪些」是两回事）。
+#
+# ⚠️ `skipped_sudo` 先定义：`set -u` 下，没走 `--no-sudo` 分支时后面引用
+# 它会报 unbound variable。声明在这一层（不在循环里 —— zsh 在循环里再
+# `local`/重复赋值已存在变量会把 `x=值` 打到 stdout）。
+skipped_sudo=()
+if [[ "$MODE" == "apply" ]]; then
+  if (( NO_SUDO == 1 )); then
+    # 去掉需要管理员权限的。用**新数组**，不改 `prefs` 本身（下面还要用它
+    # 报「跳过了哪些」）。
+    kept=()
+    for name in "${prefs[@]}"; do
+      if (( ${PREF_SUDO[(I)$name]} )); then
+        skipped_sudo+=("$name")
+      else
+        kept+=("$name")
+      fi
+    done
+    prefs=("${kept[@]}")
+  elif (( ${#ONLY[@]} > 0 )); then
+    # 只留点名的。**点名的名字不认识时报警** —— 不静默跑空（那会让人以为
+    # 「跑过了、生效了」，其实什么都没跑）。
+    requested=()
+    unknown=()
+    for want in "${ONLY[@]}"; do
+      if (( ${prefs[(I)$want]} )); then
+        requested+=("$want")
+      else
+        unknown+=("$want")
+      fi
+    done
+    if (( ${#unknown[@]} > 0 )); then
+      echo "  ! 这些主题名在 prefs.d 里没有：${(j:、:)unknown}" >&2
+      echo "    可用主题：${(j:、:)prefs}" >&2
+      exit 2
+    fi
+    # 按 `prefs` 的既有顺序跑点名的那些（不按命令行给的先后 —— 顺序只由
+    # PREF_ORDER 定，一份）。
+    selected=()
+    for name in "${prefs[@]}"; do
+      (( ${requested[(I)$name]} )) && selected+=("$name")
+    done
+    prefs=("${selected[@]}")
+  fi
+fi
 
 # ── `--list`：只报主题名，不跑 ──────────────────────────────────────────
 if [[ "$MODE" == "list" ]]; then
@@ -149,14 +234,18 @@ if [[ "$MODE" == "list" ]]; then
   # 的循环里」再 `local` 已有值的变量，会把 `x=值` 打到 stdout，污染 JSON。
   # 而且变量名**要避开脚本里已用过的全局名**（`name` 在上面已做全局循环变量，
   # 这里再 `local name` 会打印 `name=sudo_touchid.zsh` —— 踩过）。
-  local out="" theme_rows="" tname in_order first=1
+  local out="" theme_rows="" tname in_order needs_sudo first=1
   for tname in "${prefs[@]}"; do
     (( first )) || theme_rows+=","$'\n'
     first=0
     # `in_order` = 这个名字在 PREF_ORDER 里点过名（即顺序是显式的，不是兜底）。
     in_order="false"
     (( ${PREF_ORDER[(I)$tname]} )) && in_order="true"
-    theme_rows+="    { \"name\": \"$(json_escape "$tname")\", \"in_order\": $in_order }"
+    # `needs_sudo` = 要用管理员权限（PREF_SUDO 点名了）。macview 靠它决定
+    # 「这个主题归哪个按钮」—— **不写死名字**，改主题只改脚本一处。
+    needs_sudo="false"
+    (( ${PREF_SUDO[(I)$tname]} )) && needs_sudo="true"
+    theme_rows+="    { \"name\": \"$(json_escape "$tname")\", \"in_order\": $in_order, \"needs_sudo\": $needs_sudo }"
   done
 
   local stale_rows="" sfirst=1 sname
@@ -194,6 +283,14 @@ fi
 
 if (( ${#stale[@]} > 0 )); then
   echo "  ! 顺序表里的这些文件不在 prefs.d（被删或改名了？）：${(j:、:)stale}" >&2
+fi
+
+# 说清这次跳过了哪些（`--no-sudo`）—— **静默少跑是危险的**：用户以为全
+# 应用了，其实 Touch ID 那步没跑。报出来，让他知道还剩什么。
+if (( ${#skipped_sudo[@]} > 0 )); then
+  echo "跳过需要管理员权限的主题（这次没跑）：${(j:、:)skipped_sudo}"
+  echo "  要跑它们：zsh scripts/macos/prefs.zsh --only ${(j: --only :)skipped_sudo}"
+  echo
 fi
 
 echo "Applying macOS preferences..."
