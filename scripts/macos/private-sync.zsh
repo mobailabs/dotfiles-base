@@ -87,7 +87,6 @@ Usage: zsh scripts/macos/private-sync.zsh <status|pull|push> [options]
 Options:
   --carrier <目录>    中转目录（默认：\$PRIVATE_SYNC_DIR，必须给其中一个）
   --live <目录>       本机生效目录（默认：\$PRIVATE_DIR 或 ~/private-dotfiles）
-  -n, --dry-run       只打印将要做什么，不真的复制
   -h, --help          显示这段
 
 退出码：
@@ -101,13 +100,10 @@ cmd="${1:-}"
 shift || true
 
 CARRIER="${PRIVATE_SYNC_DIR:-}"
-DRY_RUN=0
-
 while (( $# > 0 )); do
   case "$1" in
     --carrier) CARRIER="${2:-}"; shift 2 ;;
     --live) LIVE_DIR="${2:-}"; shift 2 ;;
-    -n|--dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -141,10 +137,6 @@ backup_live() {
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
   local dest="$BACKUP_ROOT/$ts/$rel"
-  if (( DRY_RUN )); then
-    echo "  [dry-run] 会先备份 $src → $dest"
-    return 0
-  fi
   mkdir -p "$(dirname "$dest")"
   cp -p "$src" "$dest"
   echo "  已备份 $rel → $BACKUP_ROOT/$ts/$rel"
@@ -153,10 +145,6 @@ backup_live() {
 # 复制一个文件（建父目录，保 mtime）。
 copy_one() {
   local from="$1" to="$2"
-  if (( DRY_RUN )); then
-    echo "  [dry-run] 复制 $from → $to"
-    return 0
-  fi
   mkdir -p "$(dirname "$to")"
   cp -p "$from" "$to"
 }
@@ -171,10 +159,6 @@ sync_dir() {
   fi
   if [[ -d "$to" ]] && diff -rq "$from" "$to" >/dev/null 2>&1; then
     return 1
-  fi
-  if (( DRY_RUN )); then
-    echo "  [dry-run] 同步目录 $rel/（覆盖同名，不删多余）"
-    return 0
   fi
   mkdir -p "$to"
   # 用 tar 搬：保权限、保隐藏文件，不跟符号链接跑。
@@ -227,11 +211,7 @@ do_pull() {
       backup_live "$f"
     fi
     copy_one "$a" "$b"
-    if (( DRY_RUN )); then
-      echo "  [dry-run] 会拿过来 $f"
-    else
-      echo "  已拿过来 $f"
-    fi
+    echo "  已拿过来 $f"
     (( changed++ )) || true
   done
   local d
@@ -244,10 +224,6 @@ do_pull() {
   done
   if (( changed == 0 )); then
     echo "已经一致，什么都没做。"
-  elif (( DRY_RUN )); then
-    # ⚠️ dry-run 时上面那些「已拿过来」都没发生 —— 总结句必须说清，
-    # 否则就是撒谎（review 抓到过一次）。
-    echo "上面 $changed 项是会做的事（dry-run，没动手）。"
   else
     echo "拿过来 $changed 项。改动即生效（下次开 shell）—— 要确认去 macview 对应页看一眼。"
   fi
@@ -264,11 +240,7 @@ do_push() {
     # push 不备份 CARRIER 那边 —— CARRIER 是中转，不是真相；
     # 真相在 LIVE（有备份的是 pull 那条路）。中转丢了可以从任一机器重新 push。
     copy_one "$a" "$b"
-    if (( DRY_RUN )); then
-      echo "  [dry-run] 会交出去 $f"
-    else
-      echo "  已交出去 $f"
-    fi
+    echo "  已交出去 $f"
     (( changed++ )) || true
   done
   local d
@@ -281,8 +253,6 @@ do_push() {
   done
   if (( changed == 0 )); then
     echo "已经一致，什么都没做。"
-  elif (( DRY_RUN )); then
-    echo "上面 $changed 项是会做的事（dry-run，没动手）。"
   else
     echo "交出去 $changed 项。记得用你们的同步方式把中转目录送出去。"
   fi
