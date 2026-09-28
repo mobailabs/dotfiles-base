@@ -387,6 +387,91 @@ print(",".join(sorted(req-set(d.keys()))))
   fi
 }
 
+# ── 7b. 落点内容：opt-in、永不落盘、上限不漂移 ─────────────────────────
+#
+# 对应 private.md「slots[].content」的两条硬纪律 + 一条一致性要求。
+# 这三条都是**骗人类**的防线：
+#   · 默认带内容        → --write 把 token 明文落盘（新秘密落盘）
+#   · --content 配 --write 成功 → 同上，而且更隐蔽（调用方根本没要内容）
+#   · 上限漂移          → 同一个文件在同步页和配置段显示的截断规则不一样，
+#                         「前 400 行」在两页不是同一批行
+check_private_content() {
+  section "private-state 落点内容（--content）"
+
+  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
+  local sync="$ROOT_DIR/scripts/macos/private-sync.zsh"
+  [[ -f "$impl" ]] || { warn "private-state.zsh 不在，跳过"; return; }
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "没有 python3，内容字段的 JSON 校验跳过"
+    return
+  fi
+
+  # 1) --stdout --content：合法 JSON，每个槽位都带四个字段。
+  local json
+  json="$(zsh "$impl" --stdout --content 2>/dev/null)"
+  if [[ -z "$json" ]]; then
+    bad "--stdout --content 执行失败或无输出"
+  elif printf '%s' "$json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+need={"target_kind","points_to","content","truncated"}
+missing=[s.get("id","?") for s in d["slots"] if not need <= set(s)]
+sys.exit(1 if missing else 0)
+'; then
+    ok
+    echo "  --stdout --content：每个槽位带 target_kind/points_to/content/truncated"
+  else
+    bad "--stdout --content 的槽位缺内容字段（或 JSON 不合法）"
+  fi
+
+  # 2) 不给 --content：一个字节都不多（槽位里绝无 content 等字段）。
+  json="$(zsh "$impl" --stdout 2>/dev/null)"
+  if [[ -n "$json" ]] && printf '%s' "$json" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+keys={"target_kind","points_to","content","truncated"}
+leaked=[s.get("id","?") for s in d["slots"] if keys & set(s)]
+sys.exit(1 if leaked else 0)
+'; then
+    ok
+    echo "  默认 --stdout 不含内容字段（opt-in 成立）"
+  else
+    bad "默认 --stdout 居然带了内容字段（opt-in 被破坏，老读者会看到多余字段）"
+  fi
+
+  # 3) --content --write 必须被拒。**在假 HOME 里跑** —— 万一实现改坏了，
+  #    也只写到临时目录，不碰真实状态文件。
+  local fake rc
+  fake="$(mktemp -d)"
+  HOME="$fake" zsh "$impl" --write --content >/dev/null 2>&1
+  rc=$?
+  rm -rf "$fake"
+  if (( rc != 0 )); then
+    ok
+    echo "  --content --write 被拒绝（exit $rc），内容永不落盘"
+  else
+    bad "--content --write 竟然成功了 —— token 明文会写进 private-state.json"
+  fi
+
+  # 4) 上限两处一致。private-sync.zsh 里常量因历史原因出现两份，
+  #    所以查的是「两文件里所有 MAX_* 行去重后仍相等」—— 多复制一份也没事，
+  #    只要值不漂。
+  if [[ -f "$sync" ]]; then
+    local caps_impl caps_sync
+    caps_impl="$(grep -hE '^MAX_(LINES|BYTES)=' "$impl" | sort -u)"
+    caps_sync="$(grep -hE '^MAX_(LINES|BYTES)=' "$sync" | sort -u)"
+    if [[ -n "$caps_impl" && "$caps_impl" == "$caps_sync" ]]; then
+      ok
+      echo "  上限与 private-sync 一致（${caps_impl//$'\n'/, }）"
+    else
+      bad "上限与 private-sync.zsh 漂移（同一文件两页截断规则会不一致）"
+    fi
+  else
+    warn "private-sync.zsh 不在，跳过上限一致性"
+  fi
+}
+
 # ── 8. macview 查询脚本的 JSON 合法（契约见 macview-contract.md 第二节）────
 #
 # 契约承诺「每个查询脚本的产出都由 selfcheck 校验」。这一节就是兑现它。
@@ -535,6 +620,7 @@ main() {
   check_private_slots
   check_syntax
   check_private_json
+  check_private_content
   check_macview_query_json
   check_no_local_path
 

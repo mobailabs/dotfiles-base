@@ -27,9 +27,34 @@
 # 理由见 private.md：「源里有没有」是源的属性；而 ok 的含义是
 # 「**落到 $HOME 的那份真的生效了**」，源改好了但没链过去不算。
 #
+# ## 落点内容（--content）
+#
+# 「私有配置在哪」有三个位置，各自有各自的回答者：
+#
+#   ① 中转目录（carrier）      private-sync 管 ①↔② 的比较
+#   ② 本机私有源 SOURCE_DIR    本文件报 ②→③ 的状态
+#   ③ 落点 $HOME/...           shell/git/ssh **真正读的文件** ← 就是它
+#
+# ①② 都可能没配，但 ③ 上可能已经有东西（prompt-once 直接写的
+# ~/.gitconfig.local、link-dotfiles 链的 ~/.aliases 符号链接……）。只报状态
+# 的话，用户在 macview 里永远看不到「落点上现在是什么」—— `--content` 补的
+# 就是这个：**只读**地把每个槽位落点的全文带进 JSON（symlink 跟随后读）。
+#
+# 两条纪律（selfcheck 逐条校验）：
+#   1. **opt-in**：不给 --content 就一个字节都不多 —— --write 和老读者
+#      拿到的还是同一份 JSON（private.md：加字段不算破坏 version）。
+#   2. **永不落盘**：--content 只配 --stdout；配 --write 直接拒绝 ——
+#      否则 token 明文会写进 ~/.config/dotfiles/private-state.json，
+#      那是「新秘密落盘」，本文件的红线。
+#
+# 代价和 private-sync 的 content_* 完全一样（契约 §2.14 写全了）：全文会进
+# macview 的内存和屏幕（屏保没锁 / 录屏 / 背后有人 = 泄）。上限也必须一样
+# （400 行 / 32 KB），否则同一个文件在两个页面显示的截断规则会漂移。
+#
 # 用法：
-#   zsh scripts/macos/private-state.zsh --stdout    # 打印 JSON
-#   zsh scripts/macos/private-state.zsh --write     # 写契约文件
+#   zsh scripts/macos/private-state.zsh --stdout            # 打印 JSON
+#   zsh scripts/macos/private-state.zsh --stdout --content  # 每个槽位带落点全文
+#   zsh scripts/macos/private-state.zsh --write             # 写契约文件
 #   zsh scripts/macos/private-state.zsh --write --quiet
 
 set -uo pipefail
@@ -77,13 +102,17 @@ PLACEHOLDER_SENTINEL="# dotfiles:placeholder"
 # ── 参数 ────────────────────────────────────────────────────────────────
 MODE=""
 QUIET=0
+CONTENT=0
 
 usage() {
   cat <<'EOF'
-Usage: zsh scripts/macos/private-state.zsh <--write|--stdout> [--quiet]
+Usage: zsh scripts/macos/private-state.zsh <--write|--stdout> [--content] [--quiet]
 
   --write    产出 ~/.config/dotfiles/private-state.json（原子写，0600）
   --stdout   把同一份 JSON 打到 stdout，不落盘
+  --content  在 --stdout 的基础上，每个槽位多带落点文件的全文
+             （只读。不给就一个字节都不多。**只配 --stdout** ——
+              内容绝不写进状态文件，防明文落盘）
   --quiet    只报错，不打印进度（给 install 流程用）
 
 契约见仓库根目录的 private.md。
@@ -94,6 +123,7 @@ while (( $# > 0 )); do
   case "$1" in
     --write)  MODE="write"; shift ;;
     --stdout) MODE="stdout"; shift ;;
+    --content) CONTENT=1; shift ;;
     --quiet)  QUIET=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -103,6 +133,14 @@ done
 if [[ -z "$MODE" ]]; then
   echo "必须指定 --write 或 --stdout（二选一）。" >&2
   usage >&2
+  exit 2
+fi
+
+# --content 只给 --stdout 用。落到 --write 会让 token 明文进
+# ~/.config/dotfiles/private-state.json —— 「新秘密落盘」，红线。
+# 显式拒绝而不是静默忽略：静默的话调用方会以为拿到的内容其实没有。
+if (( CONTENT )) && [[ "$MODE" != "stdout" ]]; then
+  echo "--content 只配 --stdout：落点内容绝不写进状态文件（防明文落盘）。" >&2
   exit 2
 fi
 
@@ -401,6 +439,72 @@ SLOTS=(
   'ssh-local|ssh|ssh/config.local|.ssh/config.local|.ssh/config'
 )
 
+# ── 落点内容（--content 才走这一段）─────────────────────────────────────
+#
+# ## 上限必须和 private-sync.zsh 完全一致
+#
+# 同一个文件可能既出现在同步页（content_carrier / content_live）又出现在
+# 配置段（content）。两处截断规则不一致 = 用户看到的「前 400 行」在这两页
+# 不是同一批行 —— selfcheck 校验两文件的 MAX_LINES / MAX_BYTES 相等。
+#
+# 为什么要封顶：不封的话一个 5 MB 的文件会把 JSON 撑爆，而撑爆的表现是
+# macview 解析失败 → 「没能查」→ 什么都看不到（**失败不该伪装成没有**）。
+# `truncated: true` 时界面必须说「只显示了前 N 行」，否则用户以为看到的
+# 就是全部 —— 那是这个项目最在意的那种骗人。
+MAX_LINES=400
+MAX_BYTES=32768
+
+# 把一个文件的内容变成 JSON 字符串（不存在 / 读不了 → null）。
+#
+# ⚠️ 与 private-sync.zsh 的同名函数**照抄**（那边先写的）。改一处要改两处 ——
+# selfcheck 只能查出「上限漂移」，函数语义漂移得靠人。两处都读
+# symlink（`[[ -f ]]` 和 `< "$f"` 都跟随后的文件）—— 落点常是符号链接，
+# 读到的必须是**它指向的那份**，这才是「shell 读到的内容」。
+json_content() {
+  local f="$1"
+  [[ -f "$f" ]] || { printf 'null'; return; }
+  local -a lines
+  local line bytes=0 count=0
+  lines=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # ⚠️ 每个算术都带 `|| true`：`(( expr ))` 的值就是退出码 ——
+    # `(( n++ ))` 在 n=0 时自增前的值是 0 → 非零退出 → 脚本被杀，
+    # 且**是静默的**（private-sync 那边踩过，照抄它的防法）。
+    (( count++ )) || true
+    (( count > MAX_LINES )) && break || true
+    (( bytes += ${#line} + 1 )) || true
+    (( bytes > MAX_BYTES )) && break || true
+    lines+=("$line")
+  done < "$f"
+  local body
+  body="$(printf '%s\n' "${lines[@]}")"
+  printf '"%s"' "$(json_escape "$body")"
+}
+
+# 这个文件有没有被截断（内容比上限长）。判据 `>=`（宁可多报，不可漏报）。
+#
+# ⚠️ 与 private-sync.zsh 的同名函数照抄，连注释里的坑一起抄 —— 这几个坑
+# 每个都会造成**「明明截断了却报没截断」**，而界面说「没截断」就是骗人：
+#   · 不用 `wc -l < "$f"` 重定向（管道失败漏错误；wc 输出带文件名要剥三下）
+#   · 不用 awk/tr 切字段（`set -e` 下失败漏到 stderr）
+#   · 拿不到纯数字就不谎报截断
+file_truncated() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  local out n
+  out="$(wc -l -- "$f" 2>/dev/null)"
+  out="${out#"${out%%[![:space:]]*}"}"
+  n="${out%%[[:space:]]*}"
+  [[ "$n" == <-> ]] || return 1
+  (( n >= MAX_LINES )) && return 0 || true
+  out="$(wc -c -- "$f" 2>/dev/null)"
+  out="${out#"${out%%[![:space:]]*}"}"
+  n="${out%%[[:space:]]*}"
+  [[ "$n" == <-> ]] || return 1
+  (( n >= MAX_BYTES )) && return 0 || true
+  return 1
+}
+
 render_json() {
   detect_source
 
@@ -422,6 +526,9 @@ render_json() {
   out+="  \"slots\": ["$'\n'
 
   local i spec id name source_rel target_rel loaded_by_rel
+  # --content 用的循环内变量，循环外声明一次：循环体里重复 `local x`
+  # 在 zsh 下有把它打印到 stdout 的坑（probe_ssh_hosts 里踩过，污染 JSON）。
+  local tgt kind points_to_json trunc_json
   local n=${#SLOTS[@]}
   for (( i = 1; i <= n; i++ )); do
     spec="${SLOTS[$i]}"
@@ -440,8 +547,36 @@ render_json() {
     out+="      \"loaded_by\": $(json_home_path "$loaded_by_rel"),"$'\n'
     out+="      \"status\": \"$SLOT_STATUS\","$'\n'
     out+="      \"effect\": $SLOT_EFFECT_JSON,"$'\n'
-    out+="      \"why\": $(json_str_or_null "$SLOT_WHY")"$'\n'
-    out+="    }"
+    out+="      \"why\": $(json_str_or_null "$SLOT_WHY")"
+
+    # --content 才有的四个字段（落点全文；见文件头「落点内容」）。
+    # ⚠️ status / effect 与它们**互相独立**：`absent`（源里没这项）时落点
+    # 照样可能有内容（prompt-once 直写的 ~/.gitconfig.local 就是），
+    # `ok` 也可能 content=null（target 是目录？—— 那 effect 也早取不到了）。
+    # 读取方不得用一个推断另一个（private.md「slots[].content」一节）。
+    if (( CONTENT )); then
+      tgt="$HOME/$target_rel"
+      kind="absent"; points_to_json="null"; trunc_json="false"
+      if [[ -L "$tgt" ]]; then
+        kind="symlink"
+        # `:A` 内建把 symlink 解析成**绝对**路径。让脚本这边 resolve，读取方
+        # 就不用自己解析（相对 symlink 谁解析谁出错）。断链也给得出路径。
+        points_to_json="$(json_str_or_null "${tgt:A}")"
+      elif [[ -f "$tgt" ]]; then
+        kind="file"
+      elif [[ -e "$tgt" ]]; then
+        kind="other"   # 目录 / 设备之类：落点在，但不是文件 → content 自然 null
+      fi
+      # 不确定算不算截断时也要 true（file_truncated 的判据就是 `>=`）。
+      file_truncated "$tgt" && trunc_json="true"
+      out+=","$'\n'
+      out+="      \"target_kind\": \"$kind\","$'\n'
+      out+="      \"points_to\": $points_to_json,"$'\n'
+      out+="      \"content\": $(json_content "$tgt"),"$'\n'
+      out+="      \"truncated\": $trunc_json"
+    fi
+
+    out+=$'\n'"    }"
     (( i < n )) && out+=","
     out+=$'\n'
   done

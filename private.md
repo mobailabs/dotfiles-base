@@ -94,6 +94,11 @@ macview 直接读，不猜。
   // 五个落点，每个一条。数组有序，展示顺序即此顺序。
   // id / name / source_rel / target / loaded_by 的完整取值见
   // 上面「五个槽位的完整映射」表 —— 实现时照抄，不要自己猜。
+  //
+  // 另有 4 个**可选**字段（target_kind / points_to / content / truncated）：
+  // 只有 `--stdout --content` 才带，`--write` 永远没有 —— 见
+  // 「slots[].content」一节。没带时读取方按「这版脚本不给内容」处理，
+  // 不得显示成「内容为空」。
   "slots": [
     {
       "id": "aliases",
@@ -103,7 +108,12 @@ macview 直接读，不猜。
       "loaded_by": "/Users/you/.zshrc",
       "status": "absent",              // ok | absent | incomplete | placeholder
       "effect": null,                  // 仅 status=ok 时非 null，见下
-      "why": null                      // 仅 status=incomplete 时非 null，见下
+      "why": null,                     // 仅 status=incomplete 时非 null，见下
+      // ↓ 仅 --stdout --content 时出现（其余四个槽位同样会带，省略示意）
+      "target_kind": "symlink",        // file | symlink | absent | other
+      "points_to": "/Users/you/dotfiles/src/macos/config/aliases",  // symlink 才非 null
+      "content": "alias gs='git status'\n…",  // 落点全文；读不到 → null
+      "truncated": false               // true = 超上限被截，界面必须说
     },
     {
       "id": "zshrc-local",
@@ -539,6 +549,51 @@ elif 存在 status == "placeholder"                 → 提醒去填
 为什么要这样：研究里 chezmoi 的 `verify` 和 sops-nix 的求值期校验都说明 ——
 **「文件存在」不等于「配置生效」**。占位邮箱的文件是存在的，但 commit 出来是错的。
 
+### `slots[].content`：落点文件的全文（可选，`--content` 才有）
+
+`--stdout` 加 `--content` 时，每个槽位多 4 个字段；**其余情况（包括
+`--write`）一个字节都不多**：
+
+| 字段 | 含义 |
+|---|---|
+| `target_kind` | 落点是什么：`file`（普通文件）/ `symlink`（符号链接）/ `absent`（不存在）/ `other`（目录等非文件） |
+| `points_to` | `symlink` 时指向的**绝对**路径（脚本已解析，断链也给得出）；其余 → `null` |
+| `content` | 落点**全文**，symlink 跟随后读 —— 就是 shell/git/ssh 真正读到的那份；读不到 → `null` |
+| `truncated` | 内容超上限被截。**`true` 时界面必须写「只显示了前 N 行」** |
+
+**为什么要有它：** 私有配置在三个位置 —— ① 中转目录 ② 本机私有源
+③ 落点 `$HOME/...`。①② 没配时，③ 上仍可能有东西（`prompt-once` 直写的
+`~/.gitconfig.local`、`link-dotfiles` 链过去的 `~/.aliases`）。只报状态的
+话，用户在 macview 里永远看不到「落点上现在是什么」。①↔② 的比较归
+`private-sync`（`macview-contract.md` §2.14），**③ 归本契约** —— 槽位表
+本来就在这一侧，落点不归同步管。
+
+**两条硬纪律：**
+
+1. **opt-in**：不给 `--content`，输出一个字节都不多 —— `--write` 和老读者
+   拿到的还是同一份 JSON（加字段不算破坏 `version`，见「`version`」一节）。
+2. **永不落盘**：`--content` 只配 `--stdout`；配 `--write` **直接退出 2** ——
+   否则 token 明文会写进 `~/.config/dotfiles/private-state.json`，那是
+   「新秘密落盘」。静默忽略也不行（调用方会以为拿到了内容）。
+
+**读取方的义务：**
+
+- `content` 与 `status` / `effect` **互相独立，不得互相推断**。`absent`
+  （源里没这项）时落点照样可能有内容：没有私有仓库时 `prompt-once` 直接
+  写了真文件，或者落点是指向**公开仓库**的符号链接（`~/.aliases` 链进
+  dotfiles 仓库 —— 那份**不是私有数据**，界面要标出来）。
+- `truncated: true` 必须显示截断说明（同 §2.14 的「最坏的骗人」条款）。
+- 上限 **400 行 / 32768 字节，与 `private-sync.zsh` 完全一致** —— 同一个
+  文件可能既出现在同步页又出现在配置段，两处截断规则漂移的话，两页说的
+  「前 400 行」不是同一批行。selfcheck 校验两处相等。
+- 字段缺失 = **这版脚本不给内容**，界面写「更新 dotfiles 后重查」，
+  **不得**显示成「内容为空」（空是事实，缺失是另一回事）。
+- 代价（明写，同 §2.14）：全文会进 macview 的内存和屏幕 —— 屏保没锁 /
+  录屏 / 背后有人 = 泄。
+
+> 一句话：`content` 描述**落点上现在是什么**，`status` 描述**源到落点的
+> 链路通没通**。两个事实，各自独立显示。
+
 ### `loaded_by`：target 还没链接时填什么
 
 `loaded_by` 是**静态约定**，不是运行时事实 —— 它表达「这一项设计上由谁读」，
@@ -707,6 +762,15 @@ Include ~/.ssh/conf.d/*              # 私有源往 conf.d/ 里放任意多个�
 - [x] `present = false`（配了源没拉下来）**当前无法触发** ——
       没有持久记录能区分「配过但没了」和「从没配过」，详见判定表第 0 行的说明。
       要做需要扩展（记住 `source.remote`），现在不做
+- [x] 落点全文用 **opt-in `--content`**（只配 `--stdout`）：补上「③ 落点
+      上现在是什么」这个没人报的位置；`--write` **永不带内容**（防明文落盘），
+      配了直接退出 2（静默忽略会让调用方误以为拿到了内容）
+- [x] 内容四字段 `target_kind` / `points_to` / `content` / `truncated`
+      为**可选字段**（`version` 不变），上限 **400 行 / 32768 字节与
+      `private-sync.zsh` 一致**，selfcheck 校验两处不漂移
+- [x] `content` 与 `status` **互相独立、不得互相推断** —— `absent` 时落点
+      可以有内容（prompt-once 直写的真文件 / 指向公开仓库的符号链接），
+      界面把两个事实分开显示
 
 ### 尚未决定
 

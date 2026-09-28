@@ -425,6 +425,22 @@ macview 启动时调一次。回答「这台机器能不能开工」。
 
 **直接读现有的这个**,不新造。格式见 `private.md`。
 
+**落点内容（2026-09-28 加）**：macview 传 `--stdout --content`，每个槽位
+多带 4 个字段 —— `target_kind`（file/symlink/absent/other）、`points_to`
+（symlink 指向哪）、`content`（**落点 `$HOME` 那份的全文**，symlink 跟随后
+读）、`truncated`。语义与读取方义务见 `private.md`「slots[].content」。
+三条纪律：
+
+1. `--content` **只配 `--stdout`** —— 内容永不写进状态文件（配 `--write`
+   退出 2）。selfcheck 校验。
+2. 不给 flag 输出**一个字节都不多**（老读者 / `--write` 拿到的还是同一份）。
+3. 上限 **400 行 / 32 KB，与 §2.14 完全一致**（同一文件在两个页面的截断
+   规则不能漂移），selfcheck 校验两处相等。
+
+⚠️ 界面上 `content` 与 `status` **分开显示、互不推断**：`absent` 时落点照
+样可能有内容（`prompt-once` 直写的 `~/.gitconfig.local`；或落点是指向
+**公开仓库**的符号链接 —— 那份不是私有数据，要标注出来）。
+
 ### 2.5 开发环境 `scripts/macos/mise-status.zsh --json`(✅ 已建,可缓)
 
 mise 声明的工具 vs 实装。
