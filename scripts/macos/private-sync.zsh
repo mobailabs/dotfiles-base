@@ -60,10 +60,16 @@
 # `aliases`、`zshrc.local`、`envconfig.local`、`gitconfig.local`、
 # `ssh/config.local`，外加 `machine/` 子树（按机器分的文件，见下）。
 #
-# ⚠️ `gitconfig.local` 例外：没有私有仓库时，prompt-once 直接写
-# `~/.gitconfig.local`（真实文件，不是符号链接）。push 会把它收进 CARRIER，
-# pull 会覆盖写回去 —— 两边都是你自己的数据，last-write-wins + 备份。
-# 身份（name/email）多机器一般是一样的，同步它是对的；不一样就别同步它，
+# ⚠️ `gitconfig.local` 的落点是**真文件**：没有私有源时 prompt-once
+# 直写 `~/.gitconfig.local`（不是符号链接）。而 push/pull 收发的是
+# **LIVE 槽位**（`~/private-dotfiles/gitconfig.local`）—— 落点和 LIVE
+# 之间**没有任何代码相连**（link-dotfiles 只链仓库里的文件，全仓没有
+# 建 `~/.gitconfig.local` 链的地方）。所以现状是：
+#   · 没有私有源（LIVE 不存在）时，push 跳过这个文件，pull 也写不回
+#     落点 —— 直写的身份不参与同步。
+#   · 要同步它：把身份放进 LIVE 槽位、落点换成指向它的符号链接，
+#     之后 push/pull 才两端可达（pull 覆盖前照规则 2 备份，last-write-wins）。
+# 身份（name/email）多机器一般是一样的；不一样就别同步它，
 # 从 CARRIER 里删掉那个文件（规则 3：没有的文件不动）。
 #
 # ## machine/ 子树
