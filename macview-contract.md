@@ -925,6 +925,61 @@ gitconfig 的值可能来自系统文件 / 用户文件 / `include` / 环境变�
 
 ---
 
+### 2.14 私有同步状态 `scripts/macos/private-sync.zsh status --json`(✅ 已建)
+
+回答「私有配置在**中转目录**和**本机**两边各是什么样」。**只读** —— 不复制、
+不备份、不动任何一边。
+
+**背景:私有仓库不用 git,同步由外部提供。** 两端的分工(见脚本文件头):
+
+| | 是什么 | 约定 |
+|---|---|---|
+| `carrier` **中转目录** | 同步系统落盘的位置(网盘目录 / U 盘 / 你们的服务) | `--carrier <目录>`,或 `PRIVATE_SYNC_DIR` |
+| `live` **本机生效目录** | shell 真正读的地方 | `--live <目录>`,或 `PRIVATE_DIR`,默认 `~/private-dotfiles` |
+
+⚠️ **换同步服务时这个脚本一个字不用改** —— 交接面是「一个目录」,不是某个协议。
+
+**顶层字段**(必填:`version` / `checked_at` / `generated_by`):
+
+```json
+{
+  "version": 1,
+  "checked_at": 1790587007,
+  "generated_by": "private-sync.zsh",
+  "carrier": { "path": "…|null", "set": true, "exists": true, "looks_like_private": true },
+  "live":    { "path": "…", "exists": true },
+  "files": [ { "rel": "aliases", "state": "differ",
+               "in_carrier": true, "in_live": true, "linked": false } ],
+  "dirs":  [ { "rel": "machine", "state": "absent_both" } ]
+}
+```
+
+**`files[].state` 的五个取值**(**事实,不是判断**):
+
+| state | 含义 | 界面该说什么 |
+|---|---|---|
+| `same` | 两边都在,内容相同 | 一致 |
+| `differ` | 两边都在,内容**不同** | 不一致(⚠️ 拉还是推**归用户判断**,脚本不决定) |
+| `carrier_only` | 只在中转有 | 本机没有 —— 新机器进场了 |
+| `live_only` | 只在本机有 | 还没交出去 |
+| `absent_both` | 两边都没有 | 没配 |
+
+`files` / `dirs` 的名单来自脚本里的 `SYNC_FILES` / `SYNC_DIRS`,
+**数量不写死在 macview 侧** —— 加一个同步项只改 dotfiles 那一处。
+
+**四条纪律**(界面的对应义务):
+
+1. **`carrier.set = false` 是合法状态,不是错误。** `status --json`
+   **不要求** `--carrier` —— 没配中转目录是一个要显示的状态。⚠️ 而
+   `pull` / `push` 没 carrier 仍然退出 1(那两个动作没目标就是没目标)。
+2. **只报事实,不报「该不该同步」。** 「不一致」是事实;「该 pull 了」
+   是判断 —— 判断归 macview,脚本不掺。
+3. **不含任何文件内容。** 这是私密配置:只报存在性和「内容是否相同」,
+   **绝不把内容送出去**,界面也只显示状态。
+4. **`looks_like_private = false` 时 pull 会拒绝。** 界面应据此**提前说**
+   「中转目录里一个私有文件都没有,像是指错了」,而不是让用户按下去撞失败。
+
+
 ## 三、macview 会改的东西(编辑侧)
 
 macview 能编辑文本文件。**只改本仓库里的源文件**,不改 `$HOME` 下的落点。

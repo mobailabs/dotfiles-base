@@ -84,6 +84,10 @@ Usage: zsh scripts/macos/private-sync.zsh <status|pull|push> [options]
   pull                CARRIER → LIVE（新机器进场 / 拿别的机器的改动）
   push                LIVE → CARRIER（本机改完交出去）
 
+  加 --json 时 status 改出结构化结果（给 macview 读，只读）。
+  ⚠️ --json **不要求** --carrier：没配中转目录也是一个**合法状态**
+  （界面要显示「没配」，不是报错）。而 pull/push 没 carrier 仍然退出 1。
+
 Options:
   --carrier <目录>    中转目录（默认：\$PRIVATE_SYNC_DIR，必须给其中一个）
   --live <目录>       本机生效目录（默认：\$PRIVATE_DIR 或 ~/private-dotfiles）
@@ -100,16 +104,22 @@ cmd="${1:-}"
 shift || true
 
 CARRIER="${PRIVATE_SYNC_DIR:-}"
+AS_JSON=0
 while (( $# > 0 )); do
   case "$1" in
     --carrier) CARRIER="${2:-}"; shift 2 ;;
     --live) LIVE_DIR="${2:-}"; shift 2 ;;
+    --json) AS_JSON=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
 
-if [[ -z "$CARRIER" ]]; then
+# ⚠️ **只有 pull/push 缺 carrier 才算错。** status 不算 ——
+# 「没配中转目录」是界面**要显示的一个状态**（`carrier.set = false`），
+# 不是错误。缺了就当空字符串处理，下面所有比对自然全是「只在本机」/「都没有」。
+# 早先这里无条件 exit 1，那会让 macview 永远读不到「没配」这个状态。
+if [[ -z "$CARRIER" && "$cmd" != "status" ]]; then
   echo "Error: 没给中转目录。用 --carrier <目录>，或设 PRIVATE_SYNC_DIR。" >&2
   exit 1
 fi
@@ -191,6 +201,116 @@ do_status() {
   echo "一致 $same · 不一致 $diff · 只在中转 $only_carrier · 只在本机 $only_live"
 }
 
+# ── status --json（给 macview 读，只读）────────────────────────────────────
+#
+# ## 为什么单独一个出口而不是把纯文本转成 JSON
+#
+# 因为纯文本那个 `do_status` 里的 `echo` 是**给人看**的（中文、带提示、
+# 末尾一行汇总）。让 macview 去解析中文散文，等于把界面和这句措辞焊死 ——
+# 改一句「只在中转」就崩。所以**另写一份结构化的**，两件事各说各的，
+# 改其中一句不影响另一句。
+#
+# ## 报什么、为什么不报什么
+#
+# **只报事实**（每个文件两边各是什么状态），**不判断该不该同步**。
+# 「不一致」是事实；「该 pull」是判断 —— 判断归 macview（它知道用户意图），
+# 脚本只负责如实说。
+#
+# ⚠️ **不含任何文件内容。** 这是私密配置；只报存在性和「内容是否相同」，
+# 绝不把内容送出去。macview 也只显示状态。
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
+  print -r -- "$s"
+}
+
+json_bool() { (( $1 )) && printf 'true' || printf 'false'; }
+
+# 单个文件的状态：两边都在且相同 → same；都在但不同 → differ；
+# 只在中转 → carrier_only；只在本机 → live_only；都不在 → absent_both。
+file_state() {
+  local a="$1" b="$2"
+  if [[ -e "$a" && -e "$b" ]]; then
+    if cmp -s "$a" "$b" 2>/dev/null; then print same; else print differ; fi
+  elif [[ -e "$a" ]]; then
+    print carrier_only
+  elif [[ -e "$b" ]]; then
+    print live_only
+  else
+    print absent_both
+  fi
+}
+
+# 目录（machine/ 这类子树）的状态：只看**有没有**，不比内容 ——
+# 目录内容多且这个版本只做「看」，逐文件比对留给以后真正要 pull 的时候。
+dir_state() {
+  local a="$1" b="$2"
+  if [[ -d "$a" && -d "$b" ]]; then print same
+  elif [[ -d "$a" ]]; then print carrier_only
+  elif [[ -d "$b" ]]; then print live_only
+  else print absent_both
+  fi
+}
+
+do_json() {
+  local out f a b st
+  out+="{"$'\n'
+  out+="  \"version\": 1,"$'\n'
+  out+="  \"checked_at\": $(date +%s),"$'\n'
+  out+="  \"generated_by\": \"private-sync.zsh\","$'\n'
+
+  # 两端在哪、中转配没配。`carrier_set` 单独给一个布尔 —— 界面要先回答
+  # 「根本没配中转目录」和「配了但两边没差异」，那是两种状态。
+  out+="  \"carrier\": {"$'\n'
+  out+="    \"path\": $( [[ -n "$CARRIER" ]] && printf '"%s"' "$(json_escape "$CARRIER")" || printf 'null' ),"$'\n'
+  out+="    \"set\": $(json_bool $( [[ -n "$CARRIER" ]] && echo 1 || echo 0 )),"$'\n'
+  out+="    \"exists\": $(json_bool $( [[ -d "$CARRIER" ]] && echo 1 || echo 0 )),"$'\n'
+  out+="    \"looks_like_private\": $(json_bool $( carrier_looks_like_private && echo 1 || echo 0 ))"$'\n'
+  out+="  },"$'\n'
+  out+="  \"live\": {"$'\n'
+  out+="    \"path\": \"$(json_escape "$LIVE_DIR")\","$'\n'
+  out+="    \"exists\": $(json_bool $( [[ -d "$LIVE_DIR" ]] && echo 1 || echo 0 ))"$'\n'
+  out+="  },"$'\n'
+
+  out+="  \"files\": ["$'\n'
+  local n=${#SYNC_FILES[@]} i=0
+  for f in "${SYNC_FILES[@]}"; do
+    a="$CARRIER/$f"; b="$LIVE_DIR/$f"
+    st="$(file_state "$a" "$b")"
+    # ⚠️ `(( i++ ))` 在 i=0 时**返回非零**（表达式的值是自增前的 0），
+    # `set -e` 会当场把整个脚本杀掉 —— 而且是**静默**的（`status --json`
+    # 输出空，退出码还可能看着像 0）。踩过。`|| true` 断掉这个语义。
+    (( i++ )) || true
+    out+="    {"$'\n'
+    out+="      \"rel\": \"$(json_escape "$f")\","$'\n'
+    out+="      \"state\": \"$st\","$'\n'
+    out+="      \"in_carrier\": $(json_bool $( [[ -e "$a" ]] && echo 1 || echo 0 )),"$'\n'
+    out+="      \"in_live\": $(json_bool $( [[ -e "$b" ]] && echo 1 || echo 0 )),"$'\n'
+    out+="      \"linked\": $(json_bool $( [[ -L "$b" ]] && echo 1 || echo 0 ))"$'\n'
+    out+="    }"
+    (( i < n )) && out+=","$'\n' || out+=""$'\n'
+  done
+  out+="  ],"$'\n'
+
+  out+="  \"dirs\": ["$'\n'
+  n=${#SYNC_DIRS[@]}; i=0
+  for f in "${SYNC_DIRS[@]}"; do
+    a="$CARRIER/$f"; b="$LIVE_DIR/$f"
+    st="$(dir_state "$a" "$b")"
+    (( i++ )) || true   # 同上：i=0 时返回非零，会被 set -e 杀掉
+    out+="    {"$'\n'
+    out+="      \"rel\": \"$(json_escape "$f")\","$'\n'
+    out+="      \"state\": \"$st\""$'\n'
+    out+="    }"
+    (( i < n )) && out+=","$'\n' || out+=""$'\n'
+  done
+  out+="  ]"$'\n'
+  out+="}"$'\n'
+
+  printf '%s' "$out"
+}
+
 # ── pull / push ───────────────────────────────────────────────────────────
 
 # 把 KNOWN 文件从 $1 搬到 $2（backup 语义由调用方定：pull 才备份）。
@@ -259,7 +379,9 @@ do_push() {
 }
 
 case "$cmd" in
-  status) do_status ;;
+  status)
+    if (( AS_JSON )); then do_json; else do_status; fi
+    ;;
   pull)   do_pull ;;
   push)   do_push ;;
   *) echo "Unknown command: $cmd" >&2; usage >&2; exit 1 ;;

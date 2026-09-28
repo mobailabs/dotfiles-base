@@ -402,31 +402,52 @@ check_macview_query_json() {
     return
   fi
 
-  # `脚本|必填顶层字段（逗号分隔）`
+  # `脚本|必填顶层字段（逗号分隔）|调用前缀`（前缀默认空 = 直接 `脚本 --json`）
+  #
+  # ⚠️ 前缀是给「子命令 + --json」那种脚本用的：`private-sync.zsh` 要
+  # `status --json`（`--json` 只修饰 `status`，不是它自己的子命令）。
+  # 早先把它按普通脚本跑，`--json` 落到未知参数上 → 退出 1 →
+  # 报「执行失败」。前缀让这一类不用改通用逻辑。
   local -a specs=(
-    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,package_lists,tools"
-    "link-status.zsh|version,checked_at,generated_by,targets,counts"
-    "repo-status.zsh|version,checked_at,generated_by,is_git"
-    "mise-status.zsh|version,checked_at,generated_by,mise_present,tools"
-    "alias-status.zsh|version,checked_at,generated_by,files,count"
-    "git-identity.zsh|version,checked_at,generated_by,identity,credential_helpers,include_paths"
-    "shell-map.zsh|version,checked_at,generated_by,nodes,edges"
-    "env-status.zsh|version,checked_at,generated_by,kind,variables,path_segments,counts"
-    "ssh-status.zsh|version,checked_at,generated_by,keys,hosts,load_point,agent,counts"
-    "git-config.zsh|version,checked_at,generated_by,sources,include_paths,settings,aliases,all,counts"
+    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,package_lists,tools|"
+    "link-status.zsh|version,checked_at,generated_by,targets,counts|"
+    "repo-status.zsh|version,checked_at,generated_by,is_git|"
+    "mise-status.zsh|version,checked_at,generated_by,mise_present,tools|"
+    "alias-status.zsh|version,checked_at,generated_by,files,count|"
+    "git-identity.zsh|version,checked_at,generated_by,identity,credential_helpers,include_paths|"
+    "shell-map.zsh|version,checked_at,generated_by,nodes,edges|"
+    "env-status.zsh|version,checked_at,generated_by,kind,variables,path_segments,counts|"
+    "ssh-status.zsh|version,checked_at,generated_by,keys,hosts,load_point,agent,counts|"
+    "git-config.zsh|version,checked_at,generated_by,sources,include_paths,settings,aliases,all,counts|"
+    # private-sync 的 `--json` 只修饰 `status` 子命令，所以前缀是 `status`。
+    # 不给 carrier 也能跑（`carrier.set=false` 是合法状态，契约 §2.14 纪律 1），
+    # 那样正好也验到了「没配中转」这条路径。
+    "private-sync.zsh|version,checked_at,generated_by,carrier,live,files,dirs|status"
   )
 
   local spec name req impl json missing
   for spec in "${specs[@]}"; do
     name="${spec%%|*}"
-    req="${spec#*|}"
+    spec="${spec#*|}"
+    req="${spec%%|*}"
+    prefix="${spec#*|}"          # 调用前缀（默认空 = 直接 `脚本 --json`）
     impl="$ROOT_DIR/scripts/macos/$name"
     if [[ ! -f "$impl" ]]; then
       bad "$name 不在（契约里承诺了它）"
       continue
     fi
 
-    json="$(zsh "$impl" --json 2>/dev/null)" || { bad "$name --json 执行失败"; continue; }
+    # ⚠️ 前缀为空时 `zsh 脚本 --json`；有前缀时 `zsh 脚本 <前缀> --json`。
+    # 不能无脑加前缀 —— 那是子命令，位置错了就是「未知参数」。
+    if [[ -n "$prefix" ]]; then
+      json="$(zsh "$impl" ${=prefix} --json 2>/dev/null)"
+    else
+      json="$(zsh "$impl" --json 2>/dev/null)"
+    fi
+    if [[ -z "$json" ]]; then
+      bad "$name $prefix --json 执行失败或无输出"
+      continue
+    fi
 
     if ! printf '%s' "$json" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
       bad "$name --json 产出的不是合法 JSON"
