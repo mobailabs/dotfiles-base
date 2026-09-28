@@ -506,7 +506,14 @@ check_no_local_path() {
   local found=0
   for f in "${files[@]}"; do
     # 匹配 `local path` / `local -a path` / `local x path y` 这类声明里的 path 单词。
-    hit="$(grep -nE '^[[:space:]]*local([[:space:]]+-[A-Za-z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+path([[:space:]]|$)' "$f" 2>/dev/null || true)"
+    #
+    # ⚠️ **`path` 后面必须允许 `=`**（2026-09-28 补）。原正则只允许
+    # 「空白或行尾」，于是 `local path="$1"` —— 最常见的那种写法 —— **漏了**。
+    # 后果不是理论上的：dotfiles/scripts/macos/private-sync.zsh 里就有一处，
+    # 它把 `path` 声明成 local 之后**函数体内的命令全找不到**（`path` 绑着
+    # `$PATH`，清掉它 `wc` 就没了），`status --json` 于是输出**空**——
+    # 而 lint 说「通过」。这个 bug 花了很久才定位，因为它一路静默。
+    hit="$(grep -nE '^[[:space:]]*local([[:space:]]+-[A-Za-z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+path([[:space:]=]|$)' "$f" 2>/dev/null || true)"
     if [[ -n "$hit" ]]; then
       bad "${f#"$ROOT_DIR"/} 把保留变量 path 声明成了 local（会清空 PATH）：$hit"
       found=1
