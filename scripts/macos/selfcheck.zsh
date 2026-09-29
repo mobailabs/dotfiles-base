@@ -340,7 +340,7 @@ check_private_slots() {
 check_syntax() {
   section "shell 脚本语法"
 
-  local f n=0
+  local f n=0 dups
   # ⚠️ 只写 `**/*.zsh(N)` —— zsh 的 `**/` 已包含顶层，再加 `*.zsh(N)`
   # 会把顶层的 install.zsh 数两次（曾报「28 个」而实际只有 27 个）。
   for f in "$ROOT_DIR"/**/*.zsh(N); do
@@ -351,8 +351,17 @@ check_syntax() {
       */prefs.d/*) bash -n "$f" 2>/dev/null && ok || bad "bash 语法错误：${f#$ROOT_DIR/}" ;;
       *)           zsh  -n "$f" 2>/dev/null && ok || bad "zsh 语法错误：${f#$ROOT_DIR/}" ;;
     esac
+    # 同一文件里**重复定义的函数**：zsh 静默取后一份，前一份成死代码，
+    # 语法检查照样过 —— private-sync.zsh 就曾被整块复制（do_status 两份、
+    # MAX 两份）而一直全绿。这是那一类事故唯一的自动防线。
+    dups="$(grep -E '^[a-zA-Z_][a-zA-Z0-9_]* ?\(\)' "$f" 2>/dev/null | sort | uniq -d)"
+    if [[ -n "$dups" ]]; then
+      bad "重复函数定义（后一份静默覆盖前一份）：${f#$ROOT_DIR/} → ${dups//$'\n'/, }"
+    else
+      ok
+    fi
   done
-  echo "  检查 $n 个脚本"
+  echo "  检查 $n 个脚本（语法 + 无重复函数定义）"
 }
 
 # ── 7. private-state.zsh 产出的 JSON 合法 ───────────────────────────────
@@ -454,9 +463,9 @@ sys.exit(1 if leaked else 0)
     bad "--content --write 竟然成功了 —— token 明文会写进 private-state.json"
   fi
 
-  # 4) 上限两处一致。private-sync.zsh 里常量因历史原因出现两份，
-  #    所以查的是「两文件里所有 MAX_* 行去重后仍相等」—— 多复制一份也没事，
-  #    只要值不漂。
+  # 4) 上限两处一致。查「两文件里所有 MAX_* 行**去重后**仍相等」——
+  #    private-sync.zsh 曾被整块复制过（连 MAX 一起两份，已收敛成一份），
+  #    保留 sort -u：将来同文件真出现第二处时只比值、不误报格式。
   if [[ -f "$sync" ]]; then
     local caps_impl caps_sync
     caps_impl="$(grep -hE '^MAX_(LINES|BYTES)=' "$impl" | sort -u)"
@@ -607,6 +616,108 @@ check_no_local_path() {
   (( found )) || ok
 }
 
+# ── 10. private-sync 的 gitconfig.local 进场（adopt）───────────────────────
+#
+# 为什么值得单独查（查的是**会不会丢身份**，不是代码风格）：
+#   · pull/push 忘了调 adopt   → 直写的身份永远不同步，用户以为同步了；
+#   · 换链前不备份             → 「退得回」破了（落点原件找不回）；
+#   · 两边不一样还自动搬       → 脚本替人做价值判断（契约 §15 禁止的那件事）。
+# 动态部分在临时目录里**真跑 push/pull** —— 只查「代码里有没有那几行字」，
+# 查不出「搬坏了」。全部用临时 HOME，不碰真实状态。
+check_private_sync_adopt() {
+  section "private-sync gitconfig 进场（adopt）"
+
+  local sync="$ROOT_DIR/scripts/macos/private-sync.zsh"
+  [[ -f "$sync" ]] || { warn "private-sync.zsh 不在，跳过"; return; }
+
+  local body calls
+  body="$(sed -n '/^adopt_gitconfig()/,/^}/p' "$sync")"
+  calls="$(grep -c '^  adopt_gitconfig$' "$sync" || true)"
+
+  # 1) 定义 + pull/push 各调一次（少一个入口，那条路就静默跳过进场）。
+  if [[ -n "$body" ]] && (( calls >= 2 )); then
+    ok
+    echo "  已定义，pull/push 各调一次（$calls 个调用点）"
+  else
+    bad "adopt_gitconfig 缺定义或调用点不足（调用=$calls）—— 直写身份会静默不同步"
+  fi
+
+  # 2) 换链前把原件备份进 BACKUP_ROOT（「退得回」的前提）。
+  if print -r -- "$body" | grep -q 'BACKUP_ROOT' \
+     && print -r -- "$body" | grep -q 'mv "$home" "$dest"'; then
+    ok
+    echo "  换链前把落点原件备份进 BACKUP_ROOT"
+  else
+    bad "adopt 里没看到备份动作 —— 换链后原件找不回"
+  fi
+
+  # 3) 两边都有且不一样 → 只报告、不动手（价值判断不归脚本）。
+  if print -r -- "$body" | grep -q '两边都没动'; then
+    ok
+    echo "  两边不一样时只报告、不动手"
+  else
+    bad "adopt 缺「两边不一样就不动」的分支 —— 会替用户选一边"
+  fi
+
+  # 4) 功能：push 进场 —— 落点搬进 LIVE、换链、备份、CARRIER 收到。
+  local tmp home carrier live out out2
+  tmp="$(mktemp -d)"; home="$tmp/home"; carrier="$tmp/carrier"; live="$tmp/live"
+  mkdir -p "$home" "$carrier"
+  print -r -- 'fixture identity' > "$home/.gitconfig.local"
+  print -r -- 'aliases fixture' > "$carrier/aliases"
+  out="$(HOME="$home" zsh "$sync" push --carrier "$carrier" --live "$live" 2>&1)"
+  local -a bk=("$home"/.config/dotfiles/private-backup/*/gitconfig.local.home(N))
+  if [[ -L "$home/.gitconfig.local" ]] \
+     && [[ "$(readlink "$home/.gitconfig.local")" == "$live/gitconfig.local" ]] \
+     && [[ -f "$live/gitconfig.local" && -f "$carrier/gitconfig.local" ]] \
+     && (( ${#bk} >= 1 )); then
+    ok
+    echo "  push：落点搬进私有源、换成链接、原件已备份、CARRIER 收到"
+  else
+    bad "push 的进场没完成"
+    print -r -- "$out" | sed 's/^/    /'
+  fi
+  rm -rf "$tmp"
+
+  # 5) 功能：两边都有且不一样 → 双边原样 + 有报告。
+  tmp="$(mktemp -d)"; home="$tmp/home"; carrier="$tmp/carrier"; live="$tmp/live"
+  mkdir -p "$home" "$carrier" "$live"
+  print -r -- 'home version' > "$home/.gitconfig.local"
+  print -r -- 'live version' > "$live/gitconfig.local"
+  print -r -- 'aliases fixture' > "$carrier/aliases"
+  out="$(HOME="$home" zsh "$sync" push --carrier "$carrier" --live "$live" 2>&1)"
+  if [[ -f "$home/.gitconfig.local" && ! -L "$home/.gitconfig.local" ]] \
+     && [[ "$(cat "$home/.gitconfig.local")" == "home version" ]] \
+     && [[ "$(cat "$live/gitconfig.local")" == "live version" ]] \
+     && print -r -- "$out" | grep -q '两边都没动'; then
+    ok
+    echo "  两边不一样：落点和私有源都原样，且有报告"
+  else
+    bad "两边不一样时动了手（应只报告）"
+    print -r -- "$out" | sed 's/^/    /'
+  fi
+  rm -rf "$tmp"
+
+  # 6) 功能：pull 也进场 —— 中转覆盖后落点经链接拿到新内容；再跑一遍幂等。
+  tmp="$(mktemp -d)"; home="$tmp/home"; carrier="$tmp/carrier"; live="$tmp/live"
+  mkdir -p "$home" "$carrier"
+  print -r -- 'local identity' > "$home/.gitconfig.local"
+  print -r -- 'aliases fixture' > "$carrier/aliases"
+  print -r -- 'identity from other machine' > "$carrier/gitconfig.local"
+  out="$(HOME="$home" zsh "$sync" pull --carrier "$carrier" --live "$live" 2>&1)"
+  out2="$(HOME="$home" zsh "$sync" pull --carrier "$carrier" --live "$live" 2>&1)"
+  if [[ -L "$home/.gitconfig.local" ]] \
+     && [[ "$(cat "$home/.gitconfig.local")" == "identity from other machine" ]] \
+     && print -r -- "$out2" | grep -q '已经一致'; then
+    ok
+    echo "  pull：进场后中转覆盖经链接生效，第二遍 no-op（幂等）"
+  else
+    bad "pull 的进场/覆盖链路不对"
+    print -r -- "$out" | sed 's/^/    /'
+  fi
+  rm -rf "$tmp"
+}
+
 # ── 主流程 ──────────────────────────────────────────────────────────────
 main() {
   echo "仓库自检（只读，不联网）：$ROOT_DIR"
@@ -623,6 +734,7 @@ main() {
   check_private_content
   check_macview_query_json
   check_no_local_path
+  check_private_sync_adopt
 
   echo ""
   if (( _fail == 0 )); then

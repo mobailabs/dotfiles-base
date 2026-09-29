@@ -60,15 +60,17 @@
 # `aliases`、`zshrc.local`、`envconfig.local`、`gitconfig.local`、
 # `ssh/config.local`，外加 `machine/` 子树（按机器分的文件，见下）。
 #
-# ⚠️ `gitconfig.local` 的落点是**真文件**：没有私有源时 prompt-once
-# 直写 `~/.gitconfig.local`（不是符号链接）。而 push/pull 收发的是
-# **LIVE 槽位**（`~/private-dotfiles/gitconfig.local`）—— 落点和 LIVE
-# 之间**没有任何代码相连**（link-dotfiles 只链仓库里的文件，全仓没有
-# 建 `~/.gitconfig.local` 链的地方）。所以现状是：
-#   · 没有私有源（LIVE 不存在）时，push 跳过这个文件，pull 也写不回
-#     落点 —— 直写的身份不参与同步。
-#   · 要同步它：把身份放进 LIVE 槽位、落点换成指向它的符号链接，
-#     之后 push/pull 才两端可达（pull 覆盖前照规则 2 备份，last-write-wins）。
+# ⚠️ `gitconfig.local` 的落点是**直写文件**：prompt-once 写
+# `~/.gitconfig.local`（不是符号链接），而 push/pull 收发的是 LIVE
+# 槽位 —— 天生不相连，直写的身份就永远不同步。所以 pull/push 开跑前
+# 先跑 `adopt_gitconfig`（见下），把落点搬进 LIVE、落点换成指向它的
+# 链（原文件备份，退得回）：
+#   · 落点已是链 / 两边都没有 → 形态已对，不碰；
+#   · 落点真文件、LIVE 没有 → 复制并校验后备份搬入，落点换链；
+#   · 两边内容一致 → 纯结构动作，备份后落点换链；
+#   · 两边都有且不一样 → **两边都不动，只报出来** —— 哪份对是用户的
+#     判断，脚本不替人决定（和规则 2 的备份同一个理由）。
+# 换完之后 status / pull / push 走的全是通用逻辑，一处特判都不留。
 # 身份（name/email）多机器一般是一样的；不一样就别同步它，
 # 从 CARRIER 里删掉那个文件（规则 3：没有的文件不动）。
 #
@@ -203,6 +205,78 @@ sync_dir() {
   return 0
 }
 
+# ── gitconfig.local 进场（pull/push 开跑前各做一次）───────────────────────
+#
+# 落点 `~/.gitconfig.local` 由 prompt-once **直写**（真实文件），而
+# push/pull 收发的是 LIVE 槽位 —— 两者天生不相连，直写的身份永远不同步。
+# 这个函数把它们接上，方式是**只改落点形态**：内容搬进 LIVE（复制并校验）、
+# 落点换成指向它的链（原文件先备份，退得回）。
+#
+# 纪律：**结构动作可以自动，价值判断不行。**
+#   · 两边都有且**不一样** → 两边都不动、只报出来 —— 哪份对是用户的
+#     判断，脚本不替人决定（同规则 2 备份的逻辑：不可逆的先留退路）；
+#   · 内容一致或只有一边 → 搬运/换链是可逆的，带备份自动做完。
+# 换完之后 status / pull / push 走的全是通用逻辑，**一处特判都不留**。
+adopt_gitconfig() {
+  local home="$HOME/.gitconfig.local"
+  local live="$LIVE_DIR/gitconfig.local"
+  local ts dest
+
+  # 已经是链（含断链）：形态对了，内容归 pull/push 通用逻辑管。
+  [[ -L "$home" ]] && return 0
+
+  # 落点不存在：私有源里有就补一条链 —— 本机没配过 git 身份时，
+  # 链过去 git 立刻可用，这正是同步的意义。
+  if [[ ! -e "$home" ]]; then
+    if [[ -f "$live" ]]; then
+      ln -s "$live" "$home"
+      echo "  gitconfig.local: 落点原来不存在，已链接到私有源。"
+    fi
+    return 0
+  fi
+
+  # 到这里落点是**真文件**。
+  if [[ -e "$live" ]]; then
+    if cmp -s "$home" "$live"; then
+      # 内容一致：纯结构动作 —— 备份后换链。
+      ts="$(date +%Y%m%d-%H%M%S)"
+      dest="$BACKUP_ROOT/$ts/gitconfig.local.home"
+      mkdir -p "$(dirname "$dest")"
+      mv "$home" "$dest"
+      if ! ln -s "$live" "$home"; then
+        mv "$dest" "$home"
+        echo "  gitconfig.local: 建链失败，落点已还原。" >&2
+        return 1
+      fi
+      echo "  gitconfig.local: 两边内容一致，落点换成链接（原文件备份 → $dest）。"
+    else
+      echo "  ⚠️ gitconfig.local: 落点和私有源里都有、内容不一样 —— 两边都没动。"
+      echo "    哪份对你自己定：把对的那份放进 $live，再把 $home 换成指向它的链。"
+    fi
+    return 0
+  fi
+
+  # LIVE 没有 → 复制进去（**校验通过才动落点**），备份后换链。
+  mkdir -p "$(dirname "$live")"
+  cp -p "$home" "$live"
+  if ! cmp -s "$home" "$live"; then
+    rm -f "$live"
+    echo "  gitconfig.local: 复制进私有源后校验不一致，已停手（落点没动）。" >&2
+    return 1
+  fi
+  ts="$(date +%Y%m%d-%H%M%S)"
+  dest="$BACKUP_ROOT/$ts/gitconfig.local.home"
+  mkdir -p "$(dirname "$dest")"
+  mv "$home" "$dest"
+  if ! ln -s "$live" "$home"; then
+    mv "$dest" "$home"
+    rm -f "$live"
+    echo "  gitconfig.local: 建链失败，已还原落点、清掉私有源里的副本。" >&2
+    return 1
+  fi
+  echo "  gitconfig.local: 直写落点搬进私有源，落点换成链接（原文件备份 → $dest）。"
+}
+
 # ── status（只读） ────────────────────────────────────────────────────────
 
 do_status() {
@@ -225,86 +299,17 @@ do_status() {
     fi
   done
   echo "一致 $same · 不一致 $diff · 只在中转 $only_carrier · 只在本机 $only_live"
-}
-
-# ── status --json（给 macview 读，只读）────────────────────────────────────
-#
-# ## 为什么单独一个出口而不是把纯文本转成 JSON
-#
-# 因为纯文本那个 `do_status` 里的 `echo` 是**给人看**的（中文、带提示、
-# 末尾一行汇总）。让 macview 去解析中文散文，等于把界面和这句措辞焊死 ——
-# 改一句「只在中转」就崩。所以**另写一份结构化的**，两件事各说各的，
-# 改其中一句不影响另一句。
-#
-# ## 报什么、为什么不报什么
-#
-# **只报事实**（每个文件两边各是什么状态），**不判断该不该同步**。
-# 「不一致」是事实；「该 pull」是判断 —— 判断归 macview（它知道用户意图），
-# 脚本只负责如实说。
-#
-# ⚠️ **不含任何文件内容。** 这是私密配置；只报存在性和「内容是否相同」，
-# 绝不把内容送出去。macview 也只显示状态。
-json_escape() {
-  local s="$1"
-  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"; s="${s//$'\r'/\\r}"; s="${s//$'\t'/\\t}"
-  print -r -- "$s"
-}
-
-json_bool() { (( $1 )) && printf 'true' || printf 'false'; }
-
-# ── 内容：要不要列出来（2026-09-28 用户定的）──
-#
-# ## 结论：**列全文**（含 token 明文）
-#
-# 用户明确选了「全文都列」。理由是他自己说的：**中转目录可能是网盘 /
-# 共享位置**，所以「把要进去的东西列出来看一眼」本身就是一道**安全检查** ——
-# 他要在东西同步出去之前确认里面有什么。
-#
-# ## ⚠️ 这个决定的代价（明写在这里，不是反对）
-#
-# 列出来就意味着：**token 明文会出现在 macview 的内存里和屏幕上**。
-# 屏保没锁 / 录屏 / 有人从背后看到 = 泄。而这些内容本来躺在
-# `~/private-dotfiles` 里，**不列出来也是同样的风险** —— 只是多了一层
-# 「没被打开过」的偶然保护。
-#
-# 真正的风险不在「列」，在**中转目录是不是共享的**。所以界面上必须说清
-# 「这些会进中转目录」；而**中转目录该不该是共享的**是用户那边的选择。
-#
-# ## 上限
-#
-# 无上限的话，一个 5 MB 的文件会把整个 JSON 撑爆（macview 解析会失败，
-# 而失败表现为「没能查」—— 什么都看不到）。所以：**MAX_LINES 行**或
-# **MAX_BYTES 字节**，先到先算。被截断时 `truncated: true` —— 界面必须
-# 说清「只显示了前 N 行」，否则「看到的」和「实际的」不一致，而用户会
-# 以为那就是全部（**这正是最坏的一种骗人**）。
-
-MAX_LINES=400
-MAX_BYTES=32768
-
-# 把一个文件的内容变成 JSON 字符串（不存 → null）。
-# ── status（只读） ────────────────────────────────────────────────────────
-
-do_status() {
-  local f a b
-  local same=0 diff=0 only_carrier=0 only_live=0
-  for f in "${SYNC_FILES[@]}"; do
-    a="$CARRIER/$f"; b="$LIVE_DIR/$f"
-    if [[ -e "$a" && -e "$b" ]]; then
-      if cmp -s "$a" "$b" 2>/dev/null; then
-        echo "  = $f（一致）"; (( same++ )) || true
-      else
-        echo "  ≠ $f（两边不一样）"; (( diff++ )) || true
-      fi
-    elif [[ -e "$a" ]]; then
-      echo "  → $f（只在中转目录，本机没有）"; (( only_carrier++ )) || true
-    elif [[ -e "$b" ]]; then
-      echo "  ← $f（只在本机，中转目录没有）"; (( only_live++ )) || true
+  # gitconfig.local 还没进场时提一句 —— 否则用户在这页看不出
+  # 「为什么 git 身份没跟着同步」，只会以为同步坏了。
+  # ⚠️ 只提示、不搬：status 永远只读（进场只在 pull/push 里做）。
+  if [[ -f "$HOME/.gitconfig.local" && ! -L "$HOME/.gitconfig.local" ]]; then
+    if [[ -e "$LIVE_DIR/gitconfig.local" ]] \
+       && ! cmp -s "$HOME/.gitconfig.local" "$LIVE_DIR/gitconfig.local" 2>/dev/null; then
+      echo "提示: ~/.gitconfig.local 和私有源里的 gitconfig.local 不一样 —— pull/push 不会替你决定，先自己对齐。"
     else
-      echo "  · $f（两边都没有）"
+      echo "提示: ~/.gitconfig.local 还是直写文件 —— 跑一次 pull 或 push 会先把它搬进私有源（带备份）并换成链接。"
     fi
-  done
-  echo "一致 $same · 不一致 $diff · 只在中转 $only_carrier · 只在本机 $only_live"
+  fi
 }
 
 # ── status --json（给 macview 读，只读）────────────────────────────────────
@@ -527,6 +532,8 @@ do_pull() {
     echo "Error: $CARRIER 里一个私有文件都没有 —— 路径可能指错了，没动本机。" >&2
     exit 1
   fi
+  # 先进场再比对 —— 否则直写落点永远进不了下面的通用循环。
+  adopt_gitconfig
   local f a b changed=0
   for f in "${SYNC_FILES[@]}"; do
     a="$CARRIER/$f"; b="$LIVE_DIR/$f"
@@ -559,6 +566,9 @@ do_pull() {
 
 do_push() {
   local f a b changed=0
+  # 同 do_pull：先进场。push 还没配 carrier 内容也照常（它会创建），
+  # 进场只依赖 LIVE，不依赖 carrier 像不像私有源。
+  adopt_gitconfig
   for f in "${SYNC_FILES[@]}"; do
     a="$LIVE_DIR/$f"; b="$CARRIER/$f"
     [[ -e "$a" ]] || continue
