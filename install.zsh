@@ -13,7 +13,7 @@ usage() {
 Usage: zsh install.zsh [command] [options]
 
 Commands:
-  (empty) | base   Run setup: 一次性设置（身份/权限/ssh）, OS check,
+  (empty) | base   Run setup: 一次性设置（权限）, OS check,
                    Homebrew + packages, oh-my-zsh, zsh plugins,
                    link dotfiles, tmux plugins, mise, macOS prefs
   prefs            Apply macOS preferences only (re-runnable, idempotent)
@@ -23,23 +23,18 @@ Commands:
   help             Show this help
 
 Options（用于 base，减少交互）:
-  --name  <名字>   git 提交名字（跳过交互提问）
-  --email <邮箱>   git 提交邮箱（跳过交互提问）
-  --yes, -y        不提问「可选项」（git 名字/邮箱等），全部取参数/环境变量/已有配置
+  --yes, -y        不提问「可选项」，全部走默认/已有配置
                    注意：不豁免管理员密码 —— 若需要装 Homebrew 且无缓存，仍会问一次
                    适合脚本化、CI、远程 curl | zsh
 
 ## 全自动怎么用
 
   zsh install.zsh
-    开头问一次 git 身份 + 管理员密码；之后基本不用管，
+    开头问一次管理员密码；之后基本不用管，
     但需要管理员权限的步骤若授权已过期，会**再问一次**（会等你输入）。
 
-  zsh install.zsh --name "你的名字" --email "you@example.com"
-    省掉 git 身份的两个提问；sudo 仍可能需要输一次。
-
-  GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
-    纯环境变量驱动（同样不保证免 sudo 密码）。
+  zsh install.zsh --yes
+    不主动预授权（需要 root 的步骤会就地弹框）；同样不保证免 sudo 密码。
 
 后续所有定制通过编辑 src/**/config/*、packages/*.txt 完成。
 EOF
@@ -63,7 +58,7 @@ EOF
 # 有失败 → 整体 exit 1（CI 能判断），但**该做的都做过了**。
 _failed_steps=()
 
-# 传给 prompt-once 的参数（--name/--email/--yes）。顶层声明成空数组，
+# 传给 prompt-once 的参数（--yes）。顶层声明成空数组，
 # 这样 `"${INSTALL_ARGS[@]}"` 在 set -u 下也不会因「未定义」而报错。
 INSTALL_ARGS=()
 
@@ -215,18 +210,15 @@ run_base() {
   # （非 macOS / 没 git），继续做只会产生一串无意义的失败。
   "$SCRIPT_DIR/scripts/macos/check.zsh" || exit 1
 
-  # 把所有需要人参与的事情**集中到这里一次问完**（git 身份、sudo 预授权、
-  # ssh include）。之后绝大多数步骤零交互 —— 这样你可以敲一条命令然后走开。
+  # 把所有需要人参与的事情**集中到这里一次问完**（sudo 预授权）。
+  # 之后绝大多数步骤零交互 —— 这样你可以敲一条命令然后走开。
   #
   # ⚠️ 但「之后完全不用再管」**不是保证**：sudo 授权 5 分钟就过期，而且
   # 后台 keep-alive 未必刷得动（原因见 start_sudo_keepalive）。真正需要
   # 权限的步骤（brew 装前、prefs 前）会**就地在有终端时弹一次密码**——
   # 它会等你输入，不会悄悄卡住。所以「走开」的最佳前提是别离开太久，
   # 或者接受回来时按一下授权。
-  #
-  # 它最后还会写一份「私有源状态」给 macview 读（契约见 private.md）——
-  # 之所以放这里，是因为此刻身份和 ssh 都刚处理完，记下的才是真实状态。
-  run_step "一次性设置（身份 / 权限 / ssh）" \
+  run_step "一次性设置（权限）" \
     "$SCRIPT_DIR/scripts/macos/prompt-once.zsh" "${INSTALL_ARGS[@]}"
 
   # 开一个后台循环尽力刷新 sudo（装包动辄十几分钟，时间戳默认 5 分钟就过期）。
@@ -300,21 +292,9 @@ main() {
   local cmd="base"
   INSTALL_ARGS=()
 
-  # 第一个非选项参数是命令；其余 --name/--email/--yes 原样转给 prompt-once。
+  # 第一个非选项参数是命令；--yes 原样转给 prompt-once。
   while (( $# > 0 )); do
     case "$1" in
-      --name|--email)
-        # 缺值必须**明确报错**：否则 `--name` 后面没跟东西时，
-        # `shift 2` 会打出 `shift count must be <= $#` 这种看不懂的内部
-        # 错误，而且脚本还以 0 退出（静默什么都没做）—— 已实测。
-        if (( $# < 2 )) || [[ -z "$2" ]]; then
-          echo "Option $1 requires a value." >&2
-          usage
-          exit 1
-        fi
-        INSTALL_ARGS+=("$1" "$2")
-        shift 2
-        ;;
       --yes|-y)
         INSTALL_ARGS+=("$1")
         shift

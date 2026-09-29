@@ -57,7 +57,7 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
             ├─ ~/.funcs     → 自定义函数
             ├─ ~/.envconfig → 环境配置
             ├─ ~/.config/dotfiles/os.zsh
-            ├─ ~/.zshrc.local → 本机私有（不存在就跳过）
+            ├─ ~/.config/dotfiles/conf.d/*.zsh → 本机补充片段（没有就跳过）
             └─ ~/.config/tmux/aliases.sh → tmux 相关别名
 ```
 
@@ -148,7 +148,7 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 - 用 `typeset -U path` 去重。
 - `_pre` 是先把要前置的攒好、再整体前置 —— 直接 `path+=(...)` 追加到末尾
   会把优先级降到最低，你自己装的 CLI 会被系统同名命令遮住。
-- 私有源的 `bin` 不在这里处理，它在 `~/.zshrc.local` 里（那才是它的归属）。
+- 自己装的 CLI 的 `bin` 不在这里处理 —— 由用户在 `conf.d` 片段里按需前置。
 
 > 自检查这一条（`check_path_ownership`）：`zshrc` / `bash_profile` 里再出现
 > 手拼的 `export PATH=...$PATH...` 就报错。**加 PATH 条目只改 `.zshenv`。**
@@ -244,21 +244,19 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 
 ---
 
-## 本机私有配置（不进仓库）
+## 本机自己的配置（不进仓库）
 
-| 文件 | 用途 | 加载点 | 谁创建 |
-|---|---|---|---|
-| `~/.gitconfig.local` | 机器专属 / 含 token | `gitconfig` 的 `[include]` | `install.zsh` 开头问一次（或 `--name/--email`） |
-| `~/.zshrc.local` | 机器专属 / 含 token | `zshrc` 末尾 | 你自己 / 私有源 |
-| `~/.envconfig.local` | 私有环境变量 | `env/envconfig` | 你自己 / 私有源 |
+本仓库只留通用加载口，不声明任何具体文件：
 
-`~/.gitconfig.local` 在 `install.zsh` 跑的时候会被自动写好。给
-`install.zsh` 传 `--name/--email`（或 `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`
-环境变量）就完全不问。细节见 `README.md` 的「新机器：一条命令」一节。
+| 你放的东西 | 加载口 | 谁创建 |
+|---|---|---|
+| `~/.config/dotfiles/conf.d/*.zsh` | `zshrc` 末尾的 `conf.d` glob | 你自己 / macview |
+| `~/.config/git/config` | git 自带读取（全局配置的 XDG 位置） | 你自己 / macview |
+| ssh 的被 include 文件 | `~/.ssh/config` 里你自己写的 `Include` | 你自己 / macview |
 
-**加私有文件时，必须同时在标准文件里加加载点。** 只加一半等于没加 ——
+**放进去的东西必须有人读。** 只创建文件、不放进加载口，等于没放 ——
 文件会被创建、但没人读，而且不报错。这是这个仓库最容易踩的坑，
-完整的加载点清单见根 `README.md` 的「加载点：什么靠什么生效」一节。
+完整的加载口清单见根 `README.md` 的「加载点：什么靠什么生效」一节。
 
 ---
 

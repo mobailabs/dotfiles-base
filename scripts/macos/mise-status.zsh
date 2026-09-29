@@ -72,7 +72,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 
-# ── JSON 工具（照抄 private-state.zsh，理由见那里）──────────────────────
+# ── JSON 工具（和别的只读检测器同一套）──────────────────────
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"

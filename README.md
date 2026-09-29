@@ -16,12 +16,11 @@
 配置改在这里，机器上的改动才有归宿。
 
 **不是**：某台机器的快照。机器专属的东西（Git 身份、SSH Host、token、公司内网变量）
-不进这个仓库 —— 它们属于**私有源**（用户自己的数据，可以是私有 git 仓库、
-普通目录，将来也可以是 macview 的云服务），通过几个 `.local` 落点被这里的
-加载点读进来。**没有私有源也完全能跑** —— 加载点全是条件加载，缺了就跳过。
+**不进这个仓库** —— 它们是用户自己的数据，由用户自己（或 macview）维护。
+公开仓库只提供通用配置，并在少数地方留一个**不点名任何具体文件**的通用加载口
+（如 zsh 的 `conf.d` 目录），谁往里放东西、放什么，本仓库不管也不知道。
 
-「公开仓库 / 私有源」之间的接口（谁读谁、怎么判断装没装好）见
-**[`private.md`](private.md)** —— 那也是 macview 读的状态契约。
+**这些数据一个都没有也完全能跑** —— 通用加载口都是「有就加载、没有就跳过」。
 
 ---
 
@@ -32,11 +31,11 @@
 git clone <this-repo> ~/dotfiles
 cd ~/dotfiles
 
-# 2. 装（全部：check → 身份/权限 → brew → 插件 → 链接 → mise → 系统偏好）
+# 2. 装（全部：check → 权限 → brew → 插件 → 链接 → mise → 系统偏好）
 zsh install.zsh
 ```
 
-**它把能提前问的都集中在开头问一次**（git 名字/邮箱 + 管理员密码），
+**它把能提前问的都集中在开头问一次**（管理员密码），
 之后绝大多数步骤不用管。脚本无法自动猜的东西都在这一步问完，
 不会装到一半突然卡在某个提示上。
 
@@ -45,32 +44,34 @@ zsh install.zsh
 会**在授权失效时就地再问一次** —— 它会等你输入，不会悄悄卡住。
 所以「敲完就走开」的前提是别离开太久，或接受回来时再输一次密码。
 
-想消除 git 身份的提问（CI / 远程）：
-
 ```sh
-zsh install.zsh --name "你的名字" --email "you@example.com"
-# 或者
-GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
+zsh install.zsh --yes     # 不主动预授权；需要 root 的步骤会就地弹框
 ```
 
-`--yes` 表示不提问，全部从参数 / 环境变量 / 已有配置取值；取不到就跳过
-（不阻断其它步骤）。
+`--yes` 表示不主动预授权，全从已有环境取值（不阻断其它步骤）。
 
-⚠️ 它**不豁免管理员密码**：`--yes` 只跳过「git 名字/邮箱」这类可选项的提问。
-如果机器上还没有 Homebrew，安装它必须管理员权限 —— 那时仍会问一次密码
-（有终端才问；没有终端会明确报错，而不是假装在装）。
+⚠️ 它**不豁免管理员密码**：如果机器上还没有 Homebrew，安装它必须管理员权限 ——
+那时仍会问一次密码（有终端才问；没有终端会明确报错，而不是假装在装）。
 
-机器专属的东西（Git 身份 / SSH / token）另外放在一个**私有源**里，通过几个
-`.local` 落点被加载（见下面「加载点」，接口定义见 [`private.md`](private.md)）。
-**没有私有源也不会报错** —— 加载点全是条件加载，缺了就静默跳过。
-所以「私有源在不在、装全了没有」是 macview 要告诉你的事。
+**Git 身份不由本仓库设置**：姓名 / 邮箱是私人信息，不属于公开配置。请自己写到
+git 自己会读的位置，例如 `~/.config/git/config`（本仓库的 gitconfig 设了
+`useConfigOnly`，没有身份时 commit 会明确报错，而不是拿主机名瞎猜）：
+
+```sh
+mkdir -p ~/.config/git
+cat > ~/.config/git/config <<'EOF'
+[user]
+    name = Your Name
+    email = your@email.com
+EOF
+```
 
 ### install.zsh 做了什么
 
 | 步骤 | 内容 |
 |---|---|
 | check | 预检（macOS / git / 网络），唯一会硬性中止的一步 |
-| **一次性设置** | git 身份写 `~/.gitconfig.local`、`sudo -v` 预授权、ssh `Include` 自动加 |
+| **一次性设置** | `sudo -v` 预授权（其余私人信息本仓库不管） |
 | Homebrew + 包 | 没 brew 就先用 `NONINTERACTIVE=1` 自动装（装前会再确认一次管理员权限），再装 `packages/macos/brew-*.txt`；顺带修掉 brew 留下的「补全目录 group 可写」（否则每次开 shell 都有 oh-my-zsh 警告） |
 | oh-my-zsh / zsh 插件 | 装 `~/.oh-my-zsh` 与 brew 里没有的插件 |
 | 链接配置 | 19 个落点链到 `$HOME` |
@@ -104,7 +105,6 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 ├── install.zsh              ← 入口（macOS）
 ├── README.md                ← 本文件：装什么、怎么装、改哪里
 ├── shell.md                 ← shell 加载链的完整说明（PATH/环境变量/别名/函数）
-├── private.md               ← 公开仓库↔私有源的接口契约（macview 读的状态格式）
 ├── macview-contract.md      ← 公开仓库↔macview 的接口契约（查询脚本 + JSON 格式）
 ├── packages/                ← 要装什么（仓库只做 macOS，所以没有平台分层）
 │   └── macos/{brew-cli,brew-cask}.txt
@@ -112,8 +112,7 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 │   └── macos/               ← 全部脚本（brew / 插件 / 链接 / mise / 对账 / 状态查询）
 │       ├── brew-env.zsh     ← 把 homebrew 环境补进当前进程（被 source）
 │       ├── brew-fix-completions-perms.zsh ← 修 brew 的补全目录权限（消除 oh-my-zsh 警告）
-│       ├── private-state.zsh ← 产出私有源状态（契约见 private.md，macview 读）
-│       ├── prompt-once.zsh  ← 开头一次性问完身份/权限/ssh（全自动的关键）
+│       ├── prompt-once.zsh  ← 开头一次性问权限（全自动的关键）
 │       ├── preflight.zsh / link-status.zsh / repo-status.zsh / mise-status.zsh
 │       │                    ← 只读状态查询（--json，给 macview；契约见 macview-contract.md）
 │       ├── check.zsh, brew-install.zsh
@@ -148,25 +147,25 @@ GIT_AUTHOR_NAME=X GIT_AUTHOR_EMAIL=Y zsh install.zsh --yes
 
 ## 加载点：什么靠什么生效
 
-这是最容易出错的地方。往 `.local` 文件里写了值，**但标准文件里没人读它**，
+这是最容易出错的地方。往一个文件里写了值，**但标准文件里没人读它**，
 值就永远不生效，而且不报错。
 
-| 你写的文件 | 靠什么被加载 | 在哪 |
+本仓库只留**通用**加载口，不点名任何具体文件：
+
+| 你放的东西 | 靠什么被加载 | 在哪 |
 |---|---|---|
-| `~/.gitconfig.local` | `[include] path = ~/.gitconfig.local` | `src/macos/config/git/gitconfig` |
+| 任意 `~/.config/dotfiles/conf.d/*.zsh` | `for f in ~/.config/dotfiles/conf.d/*.zsh(N); do source $f; done` | `src/macos/config/zsh/zshrc` |
+| `~/.config/git/config` | git 自带读取（全局配置的 XDG 位置），本仓库无需声明 | — |
 | `~/.gitignore`（全局忽略） | `[core] excludesfile = ~/.gitignore` | `src/macos/config/git/gitconfig` |
 | `~/.gitattributes`（全局属性） | `[core] attributesfile = ~/.gitattributes` | `src/macos/config/git/gitconfig` |
-| `~/.zshrc.local` | `[[ -f ~/.zshrc.local ]] && source` | `src/macos/config/zsh/zshrc` |
-| `~/.envconfig.local` | `if [[ -f ~/.envconfig.local ]]; then source` | `src/macos/config/env/envconfig` |
-| `~/.ssh/config.local` | `Include ~/.ssh/config.local` | `~/.ssh/config`（本机私密文件，不在仓库里） |
+| `~/.ssh/config` 里被 `Include` 的文件 | 用户在 `~/.ssh/config` 自己写 `Include ...` | 用户自己的文件（不在仓库里） |
+
+`conf.d` **是空目录也完全正常**（`(N)` 通配保证没有匹配时不报错）。谁（用户、
+macview……）往里放东西、放什么，本仓库不关心，也不需要知道。
 
 反向也要成立：**标准文件里 source 的每个文件，都必须真有一个源**。
 `~/.exports` 和 `~/.funcs` 曾经是悬空的（zshrc 在 source，但源不存在），
 现在已在 `env/exports`、`shell/funcs` 补上并登记进 `DOTFILE_LINKS`。
-
-**加一个新的 `.local` 落点时，必须同时在标准文件里加加载点。** 只加一半等于没加。
-
-`Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
 
 > shell 这一侧的完整加载链（`.zshenv → .zprofile → .zshrc` 的顺序、
 > 每个文件里 PATH / 环境变量 / 别名 / 函数分别在哪、为什么这么分），
@@ -188,9 +187,7 @@ zsh install.zsh check
 - `install.zsh help` 的步骤说明 ←→ `run_base` 实际步骤（**会说会问密码的那一步在不在**）
 - `prefs.d/` 的顺序表 ←→ 磁盘上的文件（两个方向）
 - PATH 归属：只有 `.zshenv` 能手拼 PATH
-- `private.md` 的槽位 ←→ `private-state.zsh` 里的 `SLOTS`
 - 所有 `.zsh` / `prefs.d/*.zsh` 的语法
-- `private-state.zsh` 产出的 JSON 合法
 - **每个 macview 查询脚本的 `--json` 合法**（`preflight` / `link-status` /
   `repo-status` / `mise-status` / `brew-audit --json`；契约见 `macview-contract.md`）
 - **没有把保留变量 `path` 当 `local` 用**（`local path` 会清空 PATH，且不报错）
@@ -212,10 +209,10 @@ zsh install.zsh check
 | 改开头那几个提问 | `scripts/macos/prompt-once.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/macos/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
-| 加一个机器专属的东西 | 私有源，**不是这里**（接口见 `private.md`） |
+| 加一个机器专属的东西 | **不是这里** —— 放 `conf.d` 或 git / ssh 自己的位置（见「加载点」） |
 | **改完任何东西** | 跑 `zsh install.zsh check`（见下面「改完跑一下自检」） |
 
-判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 属于私有源。**
+判断标准：**两台机器应该一样的 → 属于这个仓库；只有一台该有的 → 别放进仓库。**
 
 ---
 
@@ -258,12 +255,11 @@ DOTFILE_LINKS=(
 
 | 脚本 | 回答什么 |
 |---|---|
-| `scripts/macos/preflight.zsh --json` | 仓库/私有仓库/要调的脚本/工具在不在 |
+| `scripts/macos/preflight.zsh --json` | 仓库 / 要调的脚本 / 工具在不在 |
 | `scripts/macos/link-status.zsh --json` | 19 个落点各自的状态 |
 | `scripts/macos/brew-audit.zsh --json` | 包清单 vs 已装（对账） |
 | `scripts/macos/mise-status.zsh --json` | mise 声明 vs 实装 |
 | `scripts/macos/repo-status.zsh --json` | git 状态 |
-| `scripts/macos/private-state.zsh --stdout` | 私有源 5 个槽位（契约见 `private.md`） |
 
 这些脚本的 JSON 产出**都由 `selfcheck.zsh` 校验**（跑 `zsh install.zsh check`）。
 
@@ -271,13 +267,8 @@ DOTFILE_LINKS=(
 要把两者对上只能解析 `.zsh`，容易漂移成假消息。这一版只提供「跑 `prefs`」按钮，
 不显示「已应用」的绿勾。理由详见 `macview-contract.md` 第 2.7 节。
 
-**私有源**那部分用 [`private.md`](private.md) 的状态契约：macview 读
-`~/.config/dotfiles/private-state.json`，就能区分「没有私有源」（正常）和
-「有但没装好」（要修）。这个文件由 `scripts/macos/private-state.zsh` 产出，
-`install.zsh` 的 prompt-once 步骤跑 `--write` 刷新，macview 需要时跑 `--stdout` 只读。
-
-**dotfiles 侧已实现；macview 侧的读取还没做**（macview 正在按新定位重做，
-设计见它自己仓库的 `docs/design/2026-09-24-重新设计-脚本控制器.md`）。
+机器专属的配置（身份、SSH、token 等）**不在本仓库的职责里** —— 本仓库只提供
+通用加载口。谁往那些口里放东西（用户自己、或 macview）由用户决定。
 
 落点清单：**macview 不再自己另存一份**，而是调 `link-status.zsh`，后者
 **从 `link-dotfiles.zsh` 的 `DOTFILE_LINKS` 读** —— 落点声明只有一处真相。
@@ -299,24 +290,7 @@ DOTFILE_LINKS=(
 
 ---
 
-## 之前需要手动、现在已自动
-
-`~/.ssh/config` 是本机的私密文件（由 git-secret 管），不在这个仓库里。
-它需要一行 `Include ~/.ssh/config.local`，`~/.ssh/config.local` 才会生效。
-
-**这一行现在由 `prompt-once.zsh` 自动加**（插到最上面、幂等、保留原权限）。
-以前是 README 里的一步手动操作 —— 忘了就静默不生效，是最隐蔽的坑之一。
-
-同理，`~/.gitconfig.local`（git 身份）现在也会在 `install.zsh` 开头问你并写好，
-不再需要事后手建。
-
-```sshconfig
-Include ~/.ssh/config.local
-```
-
-`Include` 一个不存在的文件会被 ssh 静默忽略（已验证），所以这一行永远安全。
-
-### Homebrew 补全目录的权限
+## Homebrew 补全目录的权限
 
 用 Homebrew 官方脚本安装后，`$(brew --prefix)/share` 是 `drwxrwxr-x <你>:admin`
 —— group（admin）可写。而 oh-my-zsh 启动时会用 zsh 自带的 `compaudit` 审计
@@ -347,7 +321,5 @@ zsh scripts/macos/brew-fix-completions-perms.zsh
 | 19 个配置落点 | ✅ | |
 | oh-my-zsh / zsh 插件 / tmux 插件 / mise | ✅ | |
 | macOS 偏好 | ⚠️ | 需要 sudo；开头授权后**可能**还要再输一次（见下） |
-| git 身份 | ✅ | 开头问一次，或用 `--name/--email`、环境变量 |
-| ssh `Include` | ✅ | 自动插入 |
 | **sudo 密码** | ❌ | 需要时**一定会等你输入**（不会卡死）；失效就再输一次 |
-| **私有源 / token** | ❌ | 不在本仓库，需用户自备（可以是私有 git 仓库 / 目录，将来可接 macview 云服务；见 `private.md`）
+| **git 身份 / SSH / token** | ❌ | 私人数据，不在本仓库；放 `conf.d` / git / ssh 自己的位置（见「加载点」） |

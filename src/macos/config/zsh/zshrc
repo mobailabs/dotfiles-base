@@ -36,8 +36,11 @@ DISABLE_AUTO_UPDATE=false
 # OS config - 公共仓库提供的按平台覆盖（可选）
 [[ -f "$HOME/.config/dotfiles/os.zsh" ]] && source "$HOME/.config/dotfiles/os.zsh"
 
-# Local config - 本地特定配置（私有/机器差异）
-[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
+# 本地片段 - 用户 / macview 往 conf.d 放的补充配置（公开仓库不认识里面是什么）
+for _f in "$HOME/.config/dotfiles/conf.d"/*.zsh(N); do
+  source "$_f"
+done
+unset _f
 
 # ============================================
 # Homebrew prefix

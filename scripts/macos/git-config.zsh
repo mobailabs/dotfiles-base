@@ -34,7 +34,7 @@
 # ## 为什么不报「哪些键是 dotfiles 声明 vs 用户自己加的」
 #
 # 那要把「仓库里的 gitconfig」和「本机生效的 gitconfig」对账 —— 而本机生效的
-# 里有 `~/.gitconfig.local`（用户的私有 overlay）和环境变量来的，两者混在一起。
+# 里有 include 进来的用户文件和环境变量来的，两者混在一起。
 # 对账会给出一个「哪些是 dotfiles 管的」的结论，那是**判断**，不是**事实**。
 # 本脚本**只报事实**（值 + 从哪个文件来），把「哪个文件是仓库的」留给界面
 # 按路径去说 —— 界面能一眼看出 `~/.gitconfig` 是仓库链过去的（软链）。
@@ -167,7 +167,7 @@ git_config_dump() {
 # ── 解析工具（照抄 git-identity，理由见那里）────────────────────────────
 #
 # 一行长这样（源后面是一个 **tab**，然后 `key=value`）：
-#   file:/Users/you/.gitconfig.local<TAB>user.name=cole
+#   file:/Users/you/.config/git/config<TAB>user.name=cole
 
 # 从一行里取 `key=value` 部分（tab 之后）。
 line_kv() {

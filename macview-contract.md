@@ -35,20 +35,17 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
    它读 JSON。查询脚本说「drift」,它就显示 drift。
 
 2. **查询脚本只读。** 所有 `--json` 出口**绝不写磁盘、绝不改 $HOME**。
-   它们和 `brew-audit.zsh`、`private-state.zsh --stdout` 是同一类东西。
-   (这条是从 `private-state.zsh:19` 抄的,那条注释很硬:「不装东西、
-   不改 $HOME 里的任何配置」。)
+   (这条很硬:「不装东西、不改 $HOME 里的任何配置」。)
 
 3. **JSON 受自检保护。** 每个查询脚本的产出都由 `selfcheck.zsh` 校验
-   「是合法 JSON + 必填字段在」(照 `check_private_json` 的做法)。
-   格式漂了会**报错**,不是静默。
+   「是合法 JSON + 必填字段在」。格式漂了会**报错**,不是静默。
 
 4. **没有「差不多」的字段。** 能表达「问不出来」就必须表达 ——
    不许把「没查成」写成「没有」。这是全仓库的通则
-   (见 `private.md` 的四态、`PrereqState` 的三态)。
+   (见 `PrereqState` 的三态)。
 
-5. **能不改脚本就不改。** 现有脚本已经能用的(`private-state.zsh --stdout`),
-   macview 直接读,不为它新造格式。
+5. **能不改脚本就不改。** 现有脚本已经能用的,macview 直接读,
+   不为它新造格式。
 
 ---
 
@@ -69,7 +66,6 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 | 装开发环境 | `zsh scripts/macos/mise-setup.zsh` | 否 | 0 / 1 | ✅ 已有 |
 | **下载仓库（clone）** | `zsh scripts/macos/clone-dotfiles.zsh [--url <地址>] [--dest <目录>]` | 否 | 0 / 1 / 2 | ✅ 已建（见 §1.4） |
 | **卸载一个软件** | `zsh scripts/macos/brew-uninstall.zsh [--cask] <名字>` | 否 | 0 / 1 | ✅ 已建（见 §1.3） |
-| 链私有 overlay | **不做** —— 见 §3.4（走 `install.zsh base`） | 否 | — | ⛔ 已定不做 |
 
 **契约**:上表 ✅ 的命令**以后不改名、不改语义**。
 改了 macview 会报「脚本不在」(启动检测),不会静默。
@@ -79,18 +75,13 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 **这一节是实测的,不是推演的。** 原来的稿子写「macview 给子进程开 PTY」——
 实测证明**那条路在 Swift 里走不通**,所以整节重写了。过程见 §1.1.4。
 
-#### 1.1.1 分成两件互不相干的事
+#### 1.1.1 本质是「sudo 要密码」
 
-旧稿把「没有终端」当成一个笼统的问题,其实它是**两个**:
+旧稿把「没有终端」当成一个笼统的问题。实际上 macview 起的子进程里唯一需要
+输入的就是 **sudo 密码**(装 Homebrew、`prefs` 里的 Touch ID 步骤),
+用 `SUDO_ASKPASS`(原生密码框)解决 —— **不需要 PTY**。
 
-| 问题 | 谁需要 | 怎么解 |
-|---|---|---|
-| **A. sudo 要密码** | 装 Homebrew、`prefs` 里的 Touch ID 步骤 | `SUDO_ASKPASS`(原生密码框)——**不需要终端** |
-| **B. 脚本自己要 `read`** | `prompt-once.zsh` 问 git 身份 | **不走 `read`** —— 用 `--name`/`--email` 预填 |
-
-分开看就清楚了:**两件事都不需要 PTY。**
-
-#### 1.1.2 A:sudo 用 `SUDO_ASKPASS`,不是 PTY
+#### 1.1.2 sudo 用 `SUDO_ASKPASS`,不是 PTY
 
 `sudo` 拿密码有三条路:读控制终端(`/dev/tty`)、读 stdin(`-S`)、
 调 `SUDO_ASKPASS` 指向的程序(`-A`)。图形界面没有终端,所以走第三条:
@@ -149,21 +140,6 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 > `SUDO_ASKPASS` 放进环境即可 —— 这正是旧代码做的(`SoftwareApply.swift:864-866`
 > 的 `SudoCredential.env`)。
 
-#### 1.1.3 B:git 身份用参数预填,不走 `read`
-
-`prompt-once.zsh:71` 用 `[[ -t 0 ]]` 判断要不要问 git 身份。macview 起的子进程
-没有 tty → **它会静默跳过提问**,于是 `.gitconfig.local` 不建,**之后 commit 全失败**。
-
-但 `prompt-once.zsh` 本来就支持**不问**:`--name`/`--email` 或环境变量
-`GIT_NAME`/`GIT_EMAIL`(见 `prompt-once.zsh:62-64、22-24`)。
-
-所以 macview **不靠 tty**,而是:
-1. 界面上直接问用户「git 名字/邮箱」,或者读已有的 `~/.gitconfig`;
-2. 把值用 `--name`/`--email` 传给 `zsh install.zsh`。
-
-这样「一键配置」在**完全没有终端**的情况下也能把身份配好。
-(旧代码没有这个问题,因为它**从不跑 `install.zsh`**、只做只读解析。)
-
 #### 1.1.4 为什么不是 PTY(实测记录,免得下次又想走这条)
 
 「给子进程开 PTY」听起来最干净,实测**在 Swift 里做不到**:
@@ -184,7 +160,7 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
    且 stdin 重定向不直达子进程 —— 不适合拿来抓输出。
 
 **结论**:PTY 这条路的性价比最差(要么加一个 C helper、要么忍 `script` 的脏输出),
-而它对**两个真实需求**都不必要(见 §1.1.1)。
+而它对真实需求并不必要(见 §1.1.1)。
 
 #### 1.1.5 那「实时显示 sudo 密码框」怎么做到
 
@@ -307,24 +283,18 @@ macview 显示状态靠这些。**格式都是我定的**,改格式 = 改契约�
 
 约定:
 
-- 统一用 `--json` 参数。**唯一的例外是 `private-state.zsh --stdout`** ——
-  它比这套约定早，而且它有两个模式（`--write` 给 `prompt-once` 落盘、
-  `--stdout` 给 macview 打印），`--stdout` / `--write` 是对成对的词，
-  改名叫 `--json` 反而让那一对变别扭。**所以不改它，而是把例外写在这里。**
-  （原先本节写「统一用 `--json`」、§2.4 写 `--stdout`，两处矛盾 ——
-  现在以本行为准：`private-state.zsh` 用 `--stdout`，其余用 `--json`。）
+- 统一用 `--json` 参数。
 - 输出**只有一个 JSON 对象到 stdout**;**日志/警告一律走 stderr**。
-  (这条很硬:`private-state.zsh:198` 的注释记着一个坑 —— 有一处输出
-   直接 `echo` 到了 stdout,污染了 JSON,而且是静默的。)
+  (这条很硬:曾经有脚本把一处输出直接 `echo` 到了 stdout,污染了 JSON,
+   而且是静默的。)
 - 顶层必须有 `version`(整数)、`checked_at`(Unix 秒)、`generated_by`。
-- `version` 不匹配时,macview **不装作看得懂** —— 它应该停止解析并报错
-  (照 `private.md:241` 的读规则)。
+- `version` 不匹配时,macview **不装作看得懂** —— 它应该停止解析并报错。
 - **每个脚本的产出都由 `selfcheck.zsh` 校验**(`check_macview_query_json`):
   跑它的 `--json`、要求合法 JSON、要求必填顶层字段都在。格式漂了会**报错**。
 
-> ⚠️ **实现状态**:下面 2.1–2.12 的脚本**都已经建好并跑通**
+> ⚠️ **实现状态**:下面 2.1–2.13 的脚本**都已经建好并跑通**
 > (2.1–2.10 于 2026-09-24,2.11 于 2026-09-26,2.12 于 2026-09-26),它们的
-> `--json` 产出已进 `selfcheck`。2.4 用现成的。字段以本节的 JSON 为准 ——
+> `--json` 产出已进 `selfcheck`。字段以本节的 JSON 为准 ——
 > 与早期草稿的字段名(`state` 的取值、`missing` 项的形状等)有出入时,
 > **以本节为准**,因为本节是从真实产出抄的。
 
@@ -338,7 +308,6 @@ macview 启动时调一次。回答「这台机器能不能开工」。
   "checked_at": 1758700000,
   "generated_by": "preflight.zsh",
   "dotfiles": { "state": "present", "path": "/Users/you/dotfiles" },
-  "private":  { "state": "absent",  "path": "/Users/you/private-dotfiles" },
   "scripts": [
     { "name": "install.zsh",      "path": "install.zsh",                    "state": "present" },
     { "name": "brew-install.zsh", "path": "scripts/macos/brew-install.zsh", "state": "absent" }
@@ -350,8 +319,7 @@ macview 启动时调一次。回答「这台机器能不能开工」。
 }
 ```
 
-- `state` 三态:`present` / `absent` / `unknown`(理由见 `private.md` 的四态精神:
-  问不出来必须能表达)。
+- `state` 三态:`present` / `absent` / `unknown`(问不出来必须能表达)。
 - **不查网络、不查磁盘**(旧文档 §4 的时机表:日常看的时候一次网络探测都不该发)。
 - 「脚本在不在」单列,是因为**它会变** —— 你在仓库里重命名一个脚本,
   macview 得**报出来**,而不是「点了没反应」。
@@ -386,8 +354,7 @@ macview 启动时调一次。回答「这台机器能不能开工」。
 - 落点清单**从 `link-dotfiles.zsh` 的 `DOTFILE_LINKS` 读**
   —— 不复刻一份(避免两份漂移)。抠不出数组时**报错退出**,不给空数组
   (空数组会被 macview 当成「一个落点都没有、全没问题」的假消息)。
-- `dest` 是**绝对路径**(和 `private-state.zsh` 的 `json_home_path` 一致),
-  不是 `~` —— JSON 里 `~` 不会被任何标准工具展开。
+- `dest` 是**绝对路径**,不是 `~` —— JSON 里 `~` 不会被任何标准工具展开。
 - `state` 四态:`linked` / `drift`(指向别处)/ `absent`(本机没有)/
   `other`(是个真文件,不是链接 —— 不能碰)。
 
@@ -419,27 +386,6 @@ macview 启动时调一次。回答「这台机器能不能开工」。
   ⚠️ 「多出」**不等于**「该卸」(cask 里系统自带/手动装的更多) —— 界面照实列、
   **不画勾、不标「可安全卸载」**。
 - 退出码语义与文本模式一致:有缺失 → 1。
-- ⚠️ 已知差异:只覆盖公共仓库的 2 份清单,私有源的 `*.private.txt` 读不到。
-
-### 2.4 私有源状态 `scripts/macos/private-state.zsh --stdout`(✅ 已有)
-
-**直接读现有的这个**,不新造。格式见 `private.md`。
-
-**落点内容（2026-09-28 加）**：macview 传 `--stdout --content`，每个槽位
-多带 4 个字段 —— `target_kind`（file/symlink/absent/other）、`points_to`
-（symlink 指向哪）、`content`（**落点 `$HOME` 那份的全文**，symlink 跟随后
-读）、`truncated`。语义与读取方义务见 `private.md`「slots[].content」。
-三条纪律：
-
-1. `--content` **只配 `--stdout`** —— 内容永不写进状态文件（配 `--write`
-   退出 2）。selfcheck 校验。
-2. 不给 flag 输出**一个字节都不多**（老读者 / `--write` 拿到的还是同一份）。
-3. 上限 **400 行 / 32 KB，与 §2.14 完全一致**（同一文件在两个页面的截断
-   规则不能漂移），selfcheck 校验两处相等。
-
-⚠️ 界面上 `content` 与 `status` **分开显示、互不推断**：`absent` 时落点照
-样可能有内容（`prompt-once` 直写的 `~/.gitconfig.local`；或落点是指向
-**公开仓库**的符号链接 —— 那份不是私有数据，要标注出来）。
 
 ### 2.5 开发环境 `scripts/macos/mise-status.zsh --json`(✅ 已建,可缓)
 
@@ -631,15 +577,15 @@ macview 的「应用系统设置」走 `--no-sudo`(**不弹密码框**),
   "identity": {
     "name": "cole",
     "email": "cole@example.local",
-    "name_origin": "/Users/you/.gitconfig.local",
-    "email_origin": "/Users/you/.gitconfig.local",
+    "name_origin": "/Users/you/.config/git/config",
+    "email_origin": "/Users/you/.config/git/config",
     "use_config_only": true,
     "usable": true
   },
   "credential_helpers": [
     { "host": "https://github.com", "helper": "!gh auth git-credential" }
   ],
-  "include_paths": ["~/.gitconfig.local"]
+  "include_paths": []
 }
 ```
 
@@ -663,13 +609,6 @@ macview 的「应用系统设置」走 `--no-sudo`(**不弹密码框**),
 - `git` 不在时**报错退出、不给 JSON**(空结果会被显示成「没配身份」,
   而真相是「问不出 git」)。
 
-> **和 §2.4 私有源的分工(设计稿 §3.3 定死)**:这两处**不是重复** ——
-> `private-state.zsh` 的 `git-local` 槽位说的是「**私有源仓库**里有没有
-> `.gitconfig.local` 这一项」(判据是私有源);本脚本说的是
-> 「git **实际**从哪个文件读到了身份」(判据是 git 本身)。
-> **两个问题,两个答案,可以不一样** —— 本机就是「文件在、源里没有」。
-> 所以 macview 的 git 身份页**两个都显示**、各标口径。
-
 ### 2.10 shell 启动链 `scripts/macos/shell-map.zsh --json`(✅ 已建)
 
 回答「启动一个 zsh 时,谁加载了谁」。**只读** —— 不 source、不执行、不改文件。
@@ -687,8 +626,6 @@ macview 的「应用系统设置」走 `--no-sudo`(**不弹密码框**),
   "edges": [
     { "from": "zsh/zshrc", "to": "~/.exports", "kind": "repo",
       "repo_rel": "env/exports", "conditional": true, "line": 25 },
-    { "from": "zsh/zshrc", "to": "~/.zshrc.local", "kind": "private",
-      "repo_rel": null, "conditional": true, "line": 40 },
     { "from": "zsh/zshrc", "to": "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh",
       "kind": "external", "repo_rel": null, "conditional": true, "line": 83 }
   ]
@@ -700,13 +637,12 @@ macview 的「应用系统设置」走 `--no-sudo`(**不弹密码框**),
   `interactive`(交互 shell)。这是**给人看的事实**,不是 macview 判的。
 - **`edges` 是这三个文件的直接 `source`**。**不递归**跟进被 source 的文件
   (用户 2026-09-25 拍板)—— 理由和边界写死在脚本头部。
-- `kind` 三态(决定界面能不能「点开」):
+- `kind` 两态(决定界面能不能「点开」):
   - `repo` —— 目标是仓库里的文件(如 `~/.exports` 其实链到 `env/exports`),
     `repo_rel` 是仓库内相对路径,**macview 能点开**。
-  - `private` —— 私有 overlay(如 `~/.zshrc.local`),存在才加载,内容不在仓库。
-  - `external` —— 别的东西(Homebrew 插件 / oh-my-zsh / `~/.bun/_bun`),
-    **原样显示字面量**,不展开 `$HOMEBREW_PREFIX`(那会给一个可能不存在的
-    绝对路径,更误导)。
+  - `external` —— 别的东西(Homebrew 插件 / oh-my-zsh / `~/.bun/_bun` /
+    用户自己的文件), **原样显示字面量**,不展开 `$HOMEBREW_PREFIX`
+    (那会给一个可能不存在的绝对路径,更误导)。
 - **怎么把 `~/.exports` 反查成 `env/exports`**:靠 `link-dotfiles.zsh` 的
   `DOTFILE_LINKS`(**不在这里再抄一份**,同 §2.2 的纪律)。落点是**目录**时
   (如 `.config/tmux|tmux/config`),目标在目录里的文件也归 repo
@@ -786,8 +722,7 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
 - 值**不展开** `$HOME` / `$HOMEBREW_PREFIX` —— 展开会给界面一个可能不存在的
   绝对路径,反而更误导(同 §2.10 的 `external` 决定)。
 - `path_dedup` —— zshenv 有没有 `typeset -U path`(PATH 自动去重)。一个事实位。
-- **不递归** source 出来的文件(`envconfig` 里会 source `~/.envconfig.local`,
-  那是私有源,归 `private-state.zsh`)。三个源文件任一不在时**报错退出、
+- **不递归** source 出来的文件。三个源文件任一不在时**报错退出、
   不给 JSON**;一条都抽不到时也**报错退出**(同 link-status 纪律)。
 
 ### 2.12 SSH 状态 `scripts/macos/ssh-status.zsh --json`(✅ 已建)
@@ -854,7 +789,7 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
   "load_point": {
     "has_config": true,
     "has_include": true,
-    "include_targets": ["~/.ssh/config.local"]
+    "include_targets": ["~/.ssh/config.d/work"]
   },
   "agent": { "state": "empty", "loaded_fingerprints": [] },
   "counts": { "keys": 3, "hosts": 2 }
@@ -869,8 +804,8 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
 - `keys[].type` / `fingerprint` 在没有配对 `.pub` 时是 `null`(**不猜**)。
 - `hosts[].identity_file` 多个时**逗号分隔**(ssh config 允许一个 Host 多行
   `IdentityFile`)。
-- `load_point` 就是旧 SSH 页唯一能查的那件事:宿主文件里有没有
-  `Include config.local`。`include_targets` 原样记(不展开 `~`)。
+- `load_point` 是宿主文件里有没有 `Include`、指向哪些文件。
+  `include_targets` 原样记(不展开 `~`)。
 - `counts` 是脚本自报的;界面**以自己的数组长度为准**(同 §2.8)。
 
 ### 2.13 git 配置 `scripts/macos/git-config.zsh --json`(✅ 已建)
@@ -900,9 +835,9 @@ gitconfig 的值可能来自系统文件 / 用户文件 / `include` / 环境变�
   "sources": [
     "/opt/homebrew/etc/gitconfig",
     "/Users/you/.gitconfig",
-    "/Users/you/.gitconfig.local"
+    "/Users/you/.config/git/config"
   ],
-  "include_paths": ["~/.gitconfig.local"],
+  "include_paths": [],
   "settings": [
     { "key": "core.editor", "value": "vim" },
     { "key": "core.autocrlf", "value": "input" },
@@ -930,7 +865,7 @@ gitconfig 的值可能来自系统文件 / 用户文件 / `include` / 环境变�
   它是**给人核对来源**用的 —— 「git 最终用哪个」已由 `settings` 体现。
 - **不报「哪些键是 dotfiles 声明的 vs 用户自己加的」** ——那要拿仓库 gitconfig
   和本机生效的对账,而对账是**判断**不是**事实**(本机生效的还混了
-  `~/.gitconfig.local` 和环境变量来的)。脚本只报「值 + 从哪个文件来」,
+  include 进来的用户文件和环境变量来的)。脚本只报「值 + 从哪个文件来」,
   「哪个文件是仓库的」留给界面按路径去说(界面能看出 `~/.gitconfig` 是软链)。
 - **凭据 helper 不在 `settings` 的完整体现里** —— `credential.*.helper`
   (host 级)由 §2.9 负责报,本脚本只把**全局兜底**的 `credential.helper`
@@ -940,88 +875,6 @@ gitconfig 的值可能来自系统文件 / 用户文件 / `include` / 环境变�
   而真相可能是 git 坏了;同 §2.9)。
 
 ---
-
-### 2.14 私有同步状态 `scripts/macos/private-sync.zsh status --json`(✅ 已建)
-
-回答「私有配置在**中转目录**和**本机**两边各是什么样」。**只读** —— 不复制、
-不备份、不动任何一边。
-
-**背景:私有仓库不用 git,同步由外部提供。** 两端的分工(见脚本文件头):
-
-| | 是什么 | 约定 |
-|---|---|---|
-| `carrier` **中转目录** | 同步系统落盘的位置(网盘目录 / U 盘 / 你们的服务) | `--carrier <目录>`,或 `PRIVATE_SYNC_DIR` |
-| `live` **本机生效目录** | shell 真正读的地方 | `--live <目录>`,或 `PRIVATE_DIR`,默认 `~/private-dotfiles` |
-
-⚠️ **换同步服务时这个脚本一个字不用改** —— 交接面是「一个目录」,不是某个协议。
-
-**顶层字段**(必填:`version` / `checked_at` / `generated_by`):
-
-```json
-{
-  "version": 1,
-  "checked_at": 1790587007,
-  "generated_by": "private-sync.zsh",
-  "carrier": { "path": "…|null", "set": true, "exists": true, "looks_like_private": true },
-  "live":    { "path": "…", "exists": true },
-  "files": [ { "rel": "aliases", "state": "differ",
-               "in_carrier": true, "in_live": true, "linked": false } ],
-  "dirs":  [ { "rel": "machine", "state": "absent_both" } ]
-}
-```
-
-**`files[]` 还带内容**（2026-09-28 加）:
-
-| 字段 | 含义 |
-|---|---|
-| `content_carrier` | 中转目录里那份的**全文**;不在 → `null` |
-| `content_live` | 本机那份的**全文**;不在 → `null` |
-| `truncated` | 任一边被上限截断过（**界面必须说清「只显示了前 N 行」**） |
-
-⚠️ **为什么两边都给**:`differ` 时光看一边没法判断哪个对 —— 那这一页就
-回答不了「我该往哪边改」。
-
-⚠️ **⚠️ 列全文是用户 2026-09-28 明确选的**(原话是「全文都列」)。理由:
-中转目录可能是**网盘 / 共享位置**,所以「把要进去的东西列出来看一眼」
-本身就是一道**安全检查**。**代价**:token 明文会进 macview 的内存和屏幕
-(屏保没锁 / 录屏 / 背后有人 = 泄)。但这些内容本来就在 `~/private-dotfiles`
-里躺着 —— 不列也是同样的风险,只是多了一层「没被打开过」的偶然保护。
-**所以真正的风险不在「列」,在「中转目录该不该是共享的」** —— 界面必须说清
-这一点,不能让人以为「列出来了就安全了」。
-
-⚠️ **上限**:`MAX_LINES`(400 行)/ `MAX_BYTES`(32 KB),先到先算。不封顶的话
-一个 5 MB 文件能把 JSON 撑爆 → macview 解析失败 → 显示成「没能查」→ 什么都
-看不到。**`truncated: true` 时界面必须写明「只显示了前 N 行」** —— 否则
-用户以为看到的就是全部,那是这个项目最在意的那种骗人(契约 §四)。
-
-**`files[].state` 的五个取值**(**事实,不是判断**):
-
-| state | 含义 | 界面该说什么 |
-|---|---|---|
-| `same` | 两边都在,内容相同 | 一致 |
-| `differ` | 两边都在,内容**不同** | 不一致(⚠️ 拿还是推**归用户判断**,脚本不决定) |
-| `carrier_only` | 只在中转有 | 本机没有 —— 新机器进场了 |
-| `live_only` | 只在本机有 | 还没交出去 |
-| `absent_both` | 两边都没有 | 没配 |
-
-`files` / `dirs` 的名单来自脚本里的 `SYNC_FILES` / `SYNC_DIRS`,
-**数量不写死在 macview 侧** —— 加一个同步项只改 dotfiles 那一处
-(macview 的状态查询**和同步动作**都从这份报告里拿名单,不另抄一份)。
-
-**四条纪律**(界面的对应义务):
-
-1. **`carrier.set = false` 是合法状态,不是错误。** `status --json`
-   **不要求** `--carrier` —— 没配中转目录是一个要显示的状态。
-   (2026-09-29 起脚本只剩 `status`;动作没目标同样不许含糊 —— 界面在
-   没配时**禁用按钮并说明**,见 §3.6。)
-2. **只报事实,不报「该不该同步」。** 「不一致」是事实;「该拿过来 / 交出去」
-   是判断 —— 判断归用户(界面把清单摆全),脚本不掺。
-3. **内容是列出来的**(见上面 `files[]` 那节)。⚠️ 这条**不是**「只报存在性」
-   —— 那是早先的设计,2026-09-28 改成列全文,理由和代价都在上面写全了。
-4. **`looks_like_private = false` 时动作会拒绝。** 界面应据此**提前说**
-   「中转目录里一个私有文件都没有,像是指错了」并**禁用「拿过来」**,
-   而不是让用户按下去撞失败(动作实现在 §3.6)。
-
 
 ## 三、macview 会改的东西(编辑侧)
 
@@ -1055,7 +908,7 @@ macview 能编辑文本文件。**只改本仓库里的源文件**,不改 `$HOME
 所以 commit 那一页,macview 要**自己拼 `git add` / `git commit` / `git push`**。
 这和「macview 只调脚本、不自己动手」的定位**是冲突的** —— 必须把它当成
 **明写的例外**,并配纪律,否则它会变成一条没人管的旁路。
-(「例外」后来成了一类:§3.5 clone、§3.6 私有同步动作 —— 每个都按这里的
+(「例外」后来成了一类:§3.5 clone —— 每个都按这里的
 规矩来:**明写 + 配纪律**。)
 
 macview 侧的纪律(照 DOTFILES 的既有规矩):
@@ -1110,83 +963,12 @@ macview 侧的纪律(照 DOTFILES 的既有规矩):
 后者要同步**代码**,前者只要同步**规格**(本文 §1.4)。**改规则时两边都改。**
 
 
-### 3.6 私有同步动作(拿过来 / 交出去)—— **第三个「macview 自己动手」的例外**
-
-⚠️ **2026-09-29 用户定「同步功能只在 GUI 上有」**:`private-sync.zsh` 的
-`pull` / `push`(连同 gitconfig 进场 `adopt_gitconfig`)**已从脚本删除**,
-动作整个搬进 macview。脚本只剩只读的 `status`;收到 `pull`/`push` 参数 →
-打一句去处提示、退出 1(dotfiles 的 selfcheck 守着这条,防动作回流)。
-
-**动作语义 = 原脚本行为的逐条照抄**(改动必须两边同时改 —— 脚本里已经
-没有蓝本了,这张表就是蓝本):
-
-| 环节 | 拿过来(pull,中转 → 本机) | 交出去(push,本机 → 中转) |
-|---|---|---|
-| 前置检查 | 中转目录里 ≥1 个已知私有文件,否则**拒绝**(`looks_like_private`,§2.14 纪律 4) | 不查像不像私有源(中转内容由它创建) |
-| gitconfig 进场 | **两个方向都先跑**(见下) | 同左 |
-| 5 个已知文件 | 中转有 → 复制;两边有且不同 → **先备份本机**再覆盖;相同 → 不动 | 本机有 → 复制;两边有且不同 → **不备份中转**(中转不是真相,丢了能重新交);相同 → 不动 |
-| `machine/` 子树 | 比对后整目录搬运:同名覆盖(**不备份**)、**不删**目标多余的文件 | 同,镜像方向 |
-| 收尾 | 「已经一致,什么都没做。」或「拿过来 N 项。改动即生效(下次开 shell)」 | 同镜像 +「记得用你们的同步方式把中转目录送出去」 |
-
-**gitconfig 进场(adopt)** —— 落点 `~/.gitconfig.local` 是直写真文件时:
-
-- 已是链(含断链)/ 两边都没有 → 形态已对,不碰;
-- 直写 + 私有源没有 → 复制进私有源、**校验通过才**动落点(不过 → 停手还原);
-- 两边一致 → **备份后**换链(建链失败回滚);
-- **两边都有且不一样 → 两边都不动、只报告** —— 哪份对是用户的判断,
-  动作不替人决定(§15;结构动作可自动,价值判断不行)。
-
-**备份**:`~/.config/dotfiles/private-backup/<时间戳>/<相对路径>`,落点原件
-记作 `gitconfig.local.home`。**改这个路径 = 改契约**(用户按它找回备份)。
-
-**界面纪律(macview 侧,配套的四条)**:
-
-1. **确认先行**:点击先弹确认,**逐个列出**会覆盖的文件、备份在哪、进场
-   会发生什么 —— 方向由用户在那一刻选,「谁赢」是判断,界面只摆事实。
-2. **提前禁用**:没配中转 / 中转不像私有源 → 禁用并说明原因(§2.14 纪律 4),
-   不让人按下去撞失败。
-3. **结果如实**:逐行显示动作输出(备份路径、警告、失败原因都在),
-   跑完自动重查状态;失败不画成成功。
-4. **动作跑在 macview 内**(`MacViewCore/Sync/PrivateSyncAction.swift`),
-   功能测试在 macview 仓的 `preview-shot.sh` harness 夹具里(跑不过
-   = 夹具挂)—— 动作逻辑搬到哪,测试在哪,不留查不着的盲区。
-
-> 和 §3.4 不冲突:§3.4 说的「独立的链私有 overlay 入口」仍然**不做**;
-> 进场换链只是同步动作的**内部步骤**,没有单独按钮。
-
-
 ### 3.2 打开文件 —— 编辑的兜底
 
 除了内置编辑器,macview 还应能用**默认 App / 终端**打开某个源文件
 (比如 `open -t ~/dotfiles/packages/macos/brew-cli.txt`)。
 这条不用写进契约 —— 它不碰 dotfiles 的接口。但设计文档里要有
 (macview 设计文档 §2.1 的「打开」)。
-
-### §3.4 私有 overlay 的独立入口 —— **已定：不做**
-
-现状:私有 overlay 的**五个落点**(`~/.gitconfig.local` / `~/.zshrc.local` /
-`~/.envconfig.local` / `~/.ssh/config.local` / `~/.aliases`,也是五个槽位)
-**没有独立的公开入口** —— `link-private.zsh` 在私有仓库里,macview 够不着。
-
-原先这里建议「新增 `install.zsh private-link`」。**最终决定不做** ——
-`private.md` 的「已决定」里已经写死了这条(`private.md:678`):
-
-> 检测入口:独立脚本 `private-state.zsh`,双 flag (`--write` / `--stdout`),
-> 一份检测逻辑两个调用方;**不做** `install.zsh private` 子命令
-> (那会让 install 变成 macview 的入口,职责混乱)。
-
-两条文档原先矛盾(本节建议做、`private.md` 决定不做)。**以 `private.md` 为准**,
-理由是它说的对:私有 overlay 的链接本来就是 `install.zsh base` 的一部分,
-用户跑过一次 base 就链好了;为它单开一个子命令,等于让公开仓库
-去调私有仓库的脚本 —— 那是**反过来**把依赖写反了。
-
-**所以「配置」页的私有源那一块只显示状态,不给「链私有 overlay」按钮。**
-要链就走 `install.zsh base`(一键配置里已经包含)。
-
-> 契约 §二 的查询约定里,`private-state.zsh` 用 `--stdout`(不是 `--json`)——
-> 唯一的例外,理由见 §二。
-
----
 
 ## 四、macview 写死的结构(它会复制一份,你要同步)
 
@@ -1201,7 +983,6 @@ macview 写死的东西:
 | 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1) |
 | **每个命令要不要提权** | 契约 §1 表格的「要提权」列 |
 | 落点数(19) | `link-dotfiles.zsh:34` 的 `DOTFILE_LINKS` |
-| 私有源 5 个落点/槽位 | `private.md:194` |
 | 包清单路径 | `packages/macos/brew-*.txt` |
 
 ⚠️ 早先这张表里还有一行「prefs 主题数(9)」。**已删**。2026-09-27 补了
@@ -1252,8 +1033,6 @@ macview 写死的东西:
   做法是让每个 `prefs.d/*.zsh` 自己报告键名。
 - **撤回**(macview 设计文档 §5:macview 不自建撤回。如果将来要做,
   在本仓库加 `install.zsh restore`,读 `link-dotfiles.zsh` 自己的备份)。
-- **`.envconfig.local` 的归宿**(`docs/design/2026-09-22-dotfiles-整理盘点.md` §3.3
-  记的老问题)—— 那是本仓库自己的事,不是 macview 接口。
 - ~~⚠️ **本仓库脚本里的裸 `sudo` 要认 `SUDO_ASKPASS`**(§1.1.2)—— **待办**。~~
   ✅ **已做**:新增 `scripts/macos/sudo-env.zsh`（`SUDO` / `sudo_check` /
   `sudo_authorize`),`prompt-once` / `brew-bootstrap` / `install.zsh` /
@@ -1265,9 +1044,8 @@ macview 写死的东西:
 
 - **提权(不是 tty)**(§1.1)—— 已定,而且**推翻了原稿的 PTY 方案**:
   macview 用 **`SUDO_ASKPASS` + 原生密码框**(`osascript display dialog`),
-  **不开 PTY**。git 身份用 `--name`/`--email` 预填,也**不走 `read`**。
-  原 PTY 方案在 Swift 里走不通(禁止 `fork()`,`posix_spawn` 拿不到控制终端),
-  实测记录见 §1.1.4。
+  **不开 PTY**。原 PTY 方案在 Swift 里走不通(禁止 `fork()`,`posix_spawn`
+  拿不到控制终端),实测记录见 §1.1.4。
   **后果**:`ScriptRunner` 不再需要两条执行路径的区分,而是**一条** ——
   跑命令 + 可选注入 `SUDO_ASKPASS` 环境。
 - **commit**(§3.1)—— 已定:macview 自己调 git,但配明确纪律
@@ -1281,6 +1059,5 @@ macview 写死的东西:
 | 文档 | 说什么 |
 |---|---|
 | `README.md` | 本仓库装什么、怎么装、改哪里 |
-| `private.md` | 公开仓库 ↔ 私有源的接口(私有源状态那部分) |
 | **本文** | 公开仓库 ↔ **macview** 的接口 |
 | `shell.md` | shell 加载链 |

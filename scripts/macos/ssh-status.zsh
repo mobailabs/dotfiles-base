@@ -24,10 +24,10 @@
 #    是长的 base64，用户不需要在这里看到，界面也不显示它。
 # 3. **不碰 `known_hosts` 的内容**，只报它在不在（一个事实位）。
 #
-# ## 为什么列 host，且这次不违反「不碰私有仓库」
+# ## 为什么列 host
 #
-# `~/.ssh/config` 是**用户自己的**文件（本机是 git-secret 解密落下来的，
-# 来自 private-dotfiles）。旧的 SSH 页曾决定**不列 host** —— 理由是
+# `~/.ssh/config` 是**用户自己的**文件（不在本仓库里，由用户 / macview
+# 维护）。旧的 SSH 页曾决定**不列 host** —— 理由是
 # 「列出来会给人错觉：这一页在管那些主机」。
 #
 # 那个顾虑是对的，但**不该由脚本承担** —— 脚本只报事实，界面负责措辞。
@@ -186,7 +186,7 @@ probe_keys() {
 # （`HostName` / `User` / `Port` / `IdentityFile`…），直到下一个 `Host`。
 # 关键字**大小写不敏感**（ssh 自己就是），所以下面用小写比较。
 #
-# ⚠️ **只取顶层 Host** —— 和 private-state.zsh 的 `probe_ssh_hosts` 一致：
+# ⚠️ **只取顶层 Host**：
 # 含 `*` / `?` 通配的 pattern **跳过**（`Host *` 是「所有主机的默认值」，
 # 不是一台具体主机；把它当主机列出来会误导）。
 #
@@ -255,8 +255,8 @@ probe_config_hosts() {
 
 # ── 加载点：`~/.ssh/config` 里有没有 `Include` ─────────────────────────
 #
-# 这就是旧的 SSH 页唯一能查的那件事（旧 `SSHPage.swift` 的注释写死了）：
-# 私有 overlay 要生效，宿主文件里得有 `Include config.local` 那一行。
+# 宿主文件里得有 `Include ...` 那一行，被 include 的内容才会生效。
+# 这里只报事实（有没有 Include、指向哪些文件），界面负责措辞。
 #
 # 产出：`has_config|has_include|include_targets`（targets 逗号分隔）。
 probe_load_point() {

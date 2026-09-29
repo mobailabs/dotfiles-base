@@ -1,9 +1,7 @@
 # 通用环境配置（非敏感），会被链接到 ~/.envconfig
 #
-# 注意：请在这里（envconfig）加载本地覆盖文件，而不是在 zshrc 里做这件事。
-# 例如：
-# export HTTP_PROXY=""
-# export HTTPS_PROXY=""
+# 机器 / 个人专属的变量不要写在这里 —— 放 ~/.config/dotfiles/conf.d/ 下的片段
+# （由 ~/.zshrc 统一 source；公开仓库不认识那些片段）。
 
 # ⚠️ 不要在这里写死 `export TERM=...`。
 #
@@ -15,12 +13,6 @@
 # 只在 TERM **完全为空**（极端异常，比如某些 cron/daemon 上下文）时才兜底。
 if [[ -z "${TERM:-}" ]]; then
   export TERM=xterm-256color
-fi
-
-# Local env overlay (private/machine-specific)
-# If you use the private template, it will link ~/.envconfig.local for you.
-if [[ -f ~/.envconfig.local ]]; then
-  source ~/.envconfig.local
 fi
 
 alias pyv='python3 -m venv .venv'

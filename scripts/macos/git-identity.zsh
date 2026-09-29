@@ -10,8 +10,8 @@
 #
 # ## 它不做什么
 #
-# **不改任何 git 配置、不 commit、不读 token。** 和 link-status.zsh /
-# private-state.zsh 是同一类只读检测器。
+# **不改任何 git 配置、不 commit、不读 token。** 和 link-status.zsh 是
+# 同一类只读检测器。
 #
 # ## 最要紧的决定：**问 git，不自己解析 gitconfig 文件**
 #
@@ -19,7 +19,7 @@
 #
 # 1. **gitconfig 的解析不是「读文本」那么简单。** 一个值可能来自
 #    系统文件（`/opt/homebrew/etc/gitconfig`）、用户文件（`~/.gitconfig`）、
-#    被 `include` 进来的文件（`~/.gitconfig.local`）、环境变量（`GIT_CONFIG_*`）、
+#    被 `include` 进来的文件、环境变量（`GIT_CONFIG_*`）、
 #    仓库的 `.git/config`…… **顺序有优先级，后面的覆盖前面的。**
 #    自己解析 = 自己复刻一套 git 的配置合并规则 —— 复刻错了，界面就会
 #    报一个 git 根本不认的「身份」。
@@ -36,10 +36,8 @@
 # ## 为什么报「值」也报「来自哪个文件」（origin）
 #
 # 「name 是 cole」之外，还有一个对用户有用的事实：**这个 cole 是从哪读来的**。
-# 例如「name 来自 `~/.gitconfig.local`」直接回答了「我的身份配在哪」。
-# 而且这正是 git 身份页和私有源段**不重复**的关键 ——
-# 私有源段说的是「私有源**仓库**里有没有这一项」，这里说的是
-# 「git **实际**从哪个文件读到的」。两个问题，两个答案。
+# 例如「name 来自 `~/.config/git/config`」直接回答了「我的身份配在哪」。
+# 这就是这一页要回答的问题：「git **实际**从哪个文件读到的」。
 #
 # ## 为什么不读 token
 #
@@ -134,7 +132,7 @@ git_config_dump() {
 # ── 解析工具 ────────────────────────────────────────────────────────────
 #
 # 一行长这样（源后面是一个 **tab**，然后 `key=value`）：
-#   file:/Users/you/.gitconfig.local<TAB>user.name=cole
+#   file:/Users/you/.config/git/config<TAB>user.name=cole
 #
 # `--show-origin` 的源有几种前缀：`file:` / `blob:` / `command line:` /
 # 空（环境变量来的会显示成空的源）。这里**统一处理**：找第一个 tab 切两半。

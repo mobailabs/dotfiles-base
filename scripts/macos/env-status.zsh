@@ -150,8 +150,7 @@ json_str_or_null() {
 # 顺序 = 界面显示的组顺序。`rel` 是仓库内相对路径（给 macview 显示）。
 #
 # ⚠️ 只有这三个。**不递归** source 出来的文件（同 shell-map §2.10 的边界）：
-# envconfig 里会 source `~/.envconfig.local`（私有源，内容不在仓库），那一层
-# 属于私有源报告的职责，不在这里跟。
+# envconfig 里还可能 source 别的本地片段，那一层不在这里跟。
 ENV_FILES=(
   "src/macos/config/zsh/zshenv"
   "src/macos/config/env/envconfig"

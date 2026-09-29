@@ -4,12 +4,12 @@
 #
 # ## 它做什么
 #
-# 只读地检查：仓库在不在、私有仓库在不在、要调的脚本逐个在不在、
+# 只读地检查：仓库在不在、要调的脚本逐个在不在、
 # 命令行工具 / Homebrew / git 在不在。输出一个 JSON 到 stdout。
 #
 # ## 它不做什么
 #
-# **不装东西、不改任何文件、不发网络请求。** 和 private-state.zsh 是同一类
+# **不装东西、不改任何文件、不发网络请求。** 和 brew-audit.zsh 是同一类
 # 只读检测器。网络探测尤其重要：日常「看」的时候一次网络请求都不该发
 # （旧实现那 5 秒 `curl` 是纯开销，见 macview-contract.md 第五节）。
 #
@@ -20,7 +20,7 @@
 #
 # ## 三态，不是两态
 #
-# state 除了 present / absent，还有 unknown。理由（照 private.md 的精神）：
+# state 除了 present / absent，还有 unknown。理由（照「只报事实、不猜」的精神）：
 # 「问不出来」（超时、权限不够）被说成「不在」，会让人去装一个可能已经装好的
 # 东西 —— 和「说成在」一样是假消息，只是方向相反。
 #
@@ -31,7 +31,7 @@ set -uo pipefail
 
 # $HOME 是所有落点的基准。没它的话下面 `$HOME/...` 要么崩在参数展开，
 # 要么产出 `/xxx` 这种**看起来合法、其实全错**的路径 —— 静默给 macview
-# 一份假状态，比直接失败更糟。（private-state.zsh 就是这么防的。）
+# 一份假状态，比直接失败更糟。
 if [[ -z "${HOME:-}" ]]; then
   echo "Error: HOME is not set; cannot determine dotfile locations." >&2
   exit 1
@@ -69,7 +69,7 @@ if [[ -z "$MODE" ]]; then
   exit 2
 fi
 
-# 这个仓库只做 macOS。不假装能跑别的平台（和 private-state.zsh 态度一致）。
+# 这个仓库只做 macOS。不假装能跑别的平台。
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "preflight 只支持 macOS（当前 $(uname -s)）" >&2
   exit 2
@@ -86,7 +86,6 @@ fi
 #   · mise-setup.zsh         —— 装开发环境
 #   · link-dotfiles.zsh, prefs.zsh, brew-audit.zsh
 #   · selfcheck.zsh          —— install.zsh check 实际调的就是它
-#   · private-state.zsh      —— 私有源状态（macview 直接调 --stdout）
 SCRIPTS=(
   'install.zsh|install.zsh'
   'scripts/macos/brew-install.zsh|brew-install.zsh'
@@ -95,7 +94,6 @@ SCRIPTS=(
   'scripts/macos/mise-setup.zsh|mise-setup.zsh'
   'scripts/macos/brew-audit.zsh|brew-audit.zsh'
   'scripts/macos/selfcheck.zsh|selfcheck.zsh'
-  'scripts/macos/private-state.zsh|private-state.zsh'
 )
 
 # 包清单 —— 「软件」页整页都依赖它们。它们不在，那一页就是空的，
@@ -108,7 +106,7 @@ PACKAGE_LISTS=(
   'src/macos/config/mise/config.toml|mise/config.toml'
 )
 
-# ── JSON 工具（照抄 private-state.zsh，理由见那里）──────────────────────
+# ── JSON 工具（和别的只读检测器同一套）──────────────────────────────────
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -166,9 +164,8 @@ render_json() {
   local now
   now="$(date +%s)"
 
-  local dotfiles_state private_state
+  local dotfiles_state
   dotfiles_state="$(probe_path "$ROOT_DIR")"
-  private_state="$(probe_path "$HOME/private-dotfiles")"
 
   local out=""
   out+="{"$'\n'
@@ -178,10 +175,6 @@ render_json() {
   out+="  \"dotfiles\": {"$'\n'
   out+="    \"state\": \"$dotfiles_state\","$'\n'
   out+="    \"path\": $(json_str_or_null "$ROOT_DIR")"$'\n'
-  out+="  },"$'\n'
-  out+="  \"private\": {"$'\n'
-  out+="    \"state\": \"$private_state\","$'\n'
-  out+="    \"path\": $(json_str_or_null "$HOME/private-dotfiles")"$'\n'
   out+="  },"$'\n'
   out+="  \"scripts\": ["$'\n'
 
@@ -230,7 +223,7 @@ main() {
   local json
   json="$(render_json)"
 
-  # JSON 合法性自检（照 private-state.zsh：产出时就自己发现，别让 GUI 一脸懵）。
+  # JSON 合法性自检（产出时就自己发现，别让 GUI 一脸懵）。
   if command -v python3 >/dev/null 2>&1; then
     if ! printf '%s' "$json" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
       echo "内部错误：产出的 JSON 不合法（这是个 bug，请报告）。" >&2

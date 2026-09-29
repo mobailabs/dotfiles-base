@@ -9,7 +9,6 @@
 #   link-dotfiles.zsh 的 DOTFILE_LINKS   ←→  src/macos/config/ 下真的有那个文件？
 #   README/shell.md 提到的加载点          ←→  zshrc 里真的有那行 source？
 #   prefs.zsh 的顺序表                    ←→  prefs.d/ 下真的有那些文件？
-#   private.md 的槽位表                    ←→  private-state.zsh 里真的是那五个？
 #   install.zsh 调用的每一个脚本           ←→  scripts/ 下真的存在？
 #
 # 这些关系**错了不会报错**：改了 A 忘了 B，A 照跑，B 静默失效。
@@ -20,8 +19,8 @@
 # 用法：
 #   zsh scripts/macos/selfcheck.zsh       # 有问题 exit 1
 #
-# 它检查的是**仓库内部一致性**，不检查机器状态（那是 brew-audit /
-# private-state 的事）。macOS 也不需要 —— 纯文本检查，任何机器都能跑。
+# 它检查的是**仓库内部一致性**，不检查机器状态（那是 brew-audit 的事）。
+# macOS 也不需要 —— 纯文本检查，任何机器都能跑。
 
 set -uo pipefail
 
@@ -104,7 +103,7 @@ check_links() {
 # 不查自然语言里的描述 —— 那样误报太多。
 #
 # ⚠️ 扫描范围是**仓库里所有 `.md`**（glob 发现），不是写死的三个。
-# 写死名单踩过的坑：README/shell/private 之外还有 nvim/README.md 和
+# 写死名单踩过的坑：README/shell 之外还有 nvim/README.md 和
 # tmux/config/README.md，它们里悬空的路径引用永远不会被发现。
 # 凡是「新增一个文档就得记得加进名单」的设计，迟早会漏。
 #
@@ -289,53 +288,6 @@ check_path_ownership() {
   grep -q 'typeset -U path' "$zshenv" && ok || warn ".zshenv 没有 'typeset -U path'，PATH 可能累积重复项"
 }
 
-# ── 5. private.md 的槽位表 ←→ private-state.zsh ─────────────────────────
-check_private_slots() {
-  section "private.md 槽位 ←→ private-state.zsh"
-
-  local md="$ROOT_DIR/private.md"
-  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
-
-  [[ -f "$md" ]]   || { warn "private.md 不在，跳过"; return; }
-  [[ -f "$impl" ]] || { warn "private-state.zsh 不在，跳过"; return; }
-
-  # 从实现里抽 SLOTS 数组的 id（每行 'id|name|...'）
-  local -a impl_ids=()
-  local line id
-  while IFS= read -r line; do
-    line="${line#"${line%%[![:space:]]*}"}"
-    [[ "$line" == \'* ]] || continue
-    line="${line#\'}"
-    id="${line%%|*}"
-    [[ -n "$id" ]] && impl_ids+=("$id")
-  done < <(sed -n '/^SLOTS=(/,/^)/p' "$impl")
-
-  # 从 private.md 的 JSON 块里抽 "id": "..."（主格式块）
-  local -a doc_ids=()
-  while IFS= read -r id; do
-    [[ -n "$id" ]] && doc_ids+=("$id")
-  done < <(grep -oE '"id": "[a-z-]+"' "$md" | sed 's/.*"id": "//; s/"//' | sort -u)
-
-  (( ${#impl_ids[@]} > 0 )) || { bad "没能从 private-state.zsh 的 SLOTS 里解析出 id"; return; }
-
-  local i
-  for i in "${impl_ids[@]}"; do
-    if (( ${doc_ids[(I)$i]} )); then
-      ok
-    else
-      bad "private-state.zsh 的槽位 '$i' 不在 private.md 的示例里"
-    fi
-  done
-  for i in "${doc_ids[@]}"; do
-    if (( ! ${impl_ids[(I)$i]} )); then
-      # doc 里可能还有别的 id（比如 effect 示意块），只警告
-      warn "private.md 提到槽位 '$i'，但 private-state.zsh 的 SLOTS 里没有"
-    fi
-  done
-
-  echo "  实现 ${#impl_ids[@]} 个槽位"
-}
-
 # ── 6. 所有 shell 脚本语法 ──────────────────────────────────────────────
 check_syntax() {
   section "shell 脚本语法"
@@ -352,8 +304,8 @@ check_syntax() {
       *)           zsh  -n "$f" 2>/dev/null && ok || bad "zsh 语法错误：${f#$ROOT_DIR/}" ;;
     esac
     # 同一文件里**重复定义的函数**：zsh 静默取后一份，前一份成死代码，
-    # 语法检查照样过 —— private-sync.zsh 就曾被整块复制（do_status 两份、
-    # MAX 两份）而一直全绿。这是那一类事故唯一的自动防线。
+    # 语法检查照样过 —— 曾有个脚本被整块复制（同名函数两份、同一份常量
+    # 两份）而一直全绿。这是那一类事故唯一的自动防线。
     dups="$(grep -E '^[a-zA-Z_][a-zA-Z0-9_]* ?\(\)' "$f" 2>/dev/null | sort | uniq -d)"
     if [[ -n "$dups" ]]; then
       bad "重复函数定义（后一份静默覆盖前一份）：${f#$ROOT_DIR/} → ${dups//$'\n'/, }"
@@ -362,123 +314,6 @@ check_syntax() {
     fi
   done
   echo "  检查 $n 个脚本（语法 + 无重复函数定义）"
-}
-
-# ── 7. private-state.zsh 产出的 JSON 合法 ───────────────────────────────
-check_private_json() {
-  section "private-state.zsh 产出合法 JSON"
-
-  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
-  [[ -f "$impl" ]] || { warn "跳过"; return; }
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    warn "没有 python3，跳过 JSON 校验"
-    return
-  fi
-
-  # --stdout 是只读的，不会落盘。
-  local json
-  json="$(zsh "$impl" --stdout 2>/dev/null)" || { bad "private-state.zsh --stdout 执行失败"; return; }
-
-  if printf '%s' "$json" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
-    ok
-    # 顺带校验契约必填字段
-    local missing
-    missing="$(printf '%s' "$json" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-req={"version","checked_at","generated_by","source","slots"}
-print(",".join(sorted(req-set(d.keys()))))
-')"
-    [[ -z "$missing" ]] && ok || bad "产出缺少顶层字段：$missing"
-  else
-    bad "private-state.zsh --stdout 产出的不是合法 JSON"
-  fi
-}
-
-# ── 7b. 落点内容：opt-in、永不落盘、上限不漂移 ─────────────────────────
-#
-# 对应 private.md「slots[].content」的两条硬纪律 + 一条一致性要求。
-# 这三条都是**骗人类**的防线：
-#   · 默认带内容        → --write 把 token 明文落盘（新秘密落盘）
-#   · --content 配 --write 成功 → 同上，而且更隐蔽（调用方根本没要内容）
-#   · 上限漂移          → 同一个文件在同步页和配置段显示的截断规则不一样，
-#                         「前 400 行」在两页不是同一批行
-check_private_content() {
-  section "private-state 落点内容（--content）"
-
-  local impl="$ROOT_DIR/scripts/macos/private-state.zsh"
-  local sync="$ROOT_DIR/scripts/macos/private-sync.zsh"
-  [[ -f "$impl" ]] || { warn "private-state.zsh 不在，跳过"; return; }
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    warn "没有 python3，内容字段的 JSON 校验跳过"
-    return
-  fi
-
-  # 1) --stdout --content：合法 JSON，每个槽位都带四个字段。
-  local json
-  json="$(zsh "$impl" --stdout --content 2>/dev/null)"
-  if [[ -z "$json" ]]; then
-    bad "--stdout --content 执行失败或无输出"
-  elif printf '%s' "$json" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-need={"target_kind","points_to","content","truncated"}
-missing=[s.get("id","?") for s in d["slots"] if not need <= set(s)]
-sys.exit(1 if missing else 0)
-'; then
-    ok
-    echo "  --stdout --content：每个槽位带 target_kind/points_to/content/truncated"
-  else
-    bad "--stdout --content 的槽位缺内容字段（或 JSON 不合法）"
-  fi
-
-  # 2) 不给 --content：一个字节都不多（槽位里绝无 content 等字段）。
-  json="$(zsh "$impl" --stdout 2>/dev/null)"
-  if [[ -n "$json" ]] && printf '%s' "$json" | python3 -c '
-import json,sys
-d=json.load(sys.stdin)
-keys={"target_kind","points_to","content","truncated"}
-leaked=[s.get("id","?") for s in d["slots"] if keys & set(s)]
-sys.exit(1 if leaked else 0)
-'; then
-    ok
-    echo "  默认 --stdout 不含内容字段（opt-in 成立）"
-  else
-    bad "默认 --stdout 居然带了内容字段（opt-in 被破坏，老读者会看到多余字段）"
-  fi
-
-  # 3) --content --write 必须被拒。**在假 HOME 里跑** —— 万一实现改坏了，
-  #    也只写到临时目录，不碰真实状态文件。
-  local fake rc
-  fake="$(mktemp -d)"
-  HOME="$fake" zsh "$impl" --write --content >/dev/null 2>&1
-  rc=$?
-  rm -rf "$fake"
-  if (( rc != 0 )); then
-    ok
-    echo "  --content --write 被拒绝（exit $rc），内容永不落盘"
-  else
-    bad "--content --write 竟然成功了 —— token 明文会写进 private-state.json"
-  fi
-
-  # 4) 上限两处一致。查「两文件里所有 MAX_* 行**去重后**仍相等」——
-  #    private-sync.zsh 曾被整块复制过（连 MAX 一起两份，已收敛成一份），
-  #    保留 sort -u：将来同文件真出现第二处时只比值、不误报格式。
-  if [[ -f "$sync" ]]; then
-    local caps_impl caps_sync
-    caps_impl="$(grep -hE '^MAX_(LINES|BYTES)=' "$impl" | sort -u)"
-    caps_sync="$(grep -hE '^MAX_(LINES|BYTES)=' "$sync" | sort -u)"
-    if [[ -n "$caps_impl" && "$caps_impl" == "$caps_sync" ]]; then
-      ok
-      echo "  上限与 private-sync 一致（${caps_impl//$'\n'/, }）"
-    else
-      bad "上限与 private-sync.zsh 漂移（同一文件两页截断规则会不一致）"
-    fi
-  else
-    warn "private-sync.zsh 不在，跳过上限一致性"
-  fi
 }
 
 # ── 8. macview 查询脚本的 JSON 合法（契约见 macview-contract.md 第二节）────
@@ -498,12 +333,10 @@ check_macview_query_json() {
 
   # `脚本|必填顶层字段（逗号分隔）|调用前缀`（前缀默认空 = 直接 `脚本 --json`）
   #
-  # ⚠️ 前缀是给「子命令 + --json」那种脚本用的：`private-sync.zsh` 要
-  # `status --json`（`--json` 只修饰 `status`，不是它自己的子命令）。
-  # 早先把它按普通脚本跑，`--json` 落到未知参数上 → 退出 1 →
-  # 报「执行失败」。前缀让这一类不用改通用逻辑。
+  # 前缀是给「子命令 + --json」那种脚本用的（`--json` 只修饰某个子命令）。
+  # 早先按普通脚本跑会落到未知参数上 → 退出 1 → 报「执行失败」。
   local -a specs=(
-    "preflight.zsh|version,checked_at,generated_by,dotfiles,private,scripts,package_lists,tools|"
+    "preflight.zsh|version,checked_at,generated_by,dotfiles,scripts,package_lists,tools|"
     "link-status.zsh|version,checked_at,generated_by,targets,counts|"
     "repo-status.zsh|version,checked_at,generated_by,is_git|"
     "mise-status.zsh|version,checked_at,generated_by,mise_present,tools|"
@@ -513,10 +346,6 @@ check_macview_query_json() {
     "env-status.zsh|version,checked_at,generated_by,kind,variables,path_segments,counts|"
     "ssh-status.zsh|version,checked_at,generated_by,keys,hosts,load_point,agent,counts|"
     "git-config.zsh|version,checked_at,generated_by,sources,include_paths,settings,aliases,all,counts|"
-    # private-sync 的 `--json` 只修饰 `status` 子命令，所以前缀是 `status`。
-    # 不给 carrier 也能跑（`carrier.set=false` 是合法状态，契约 §2.14 纪律 1），
-    # 那样正好也验到了「没配中转」这条路径。
-    "private-sync.zsh|version,checked_at,generated_by,carrier,live,files,dirs|status"
   )
 
   local spec name req impl json missing
@@ -603,10 +432,9 @@ check_no_local_path() {
     #
     # ⚠️ **`path` 后面必须允许 `=`**（2026-09-28 补）。原正则只允许
     # 「空白或行尾」，于是 `local path="$1"` —— 最常见的那种写法 —— **漏了**。
-    # 后果不是理论上的：dotfiles/scripts/macos/private-sync.zsh 里就有一处，
-    # 它把 `path` 声明成 local 之后**函数体内的命令全找不到**（`path` 绑着
-    # `$PATH`，清掉它 `wc` 就没了），`status --json` 于是输出**空**——
-    # 而 lint 说「通过」。这个 bug 花了很久才定位，因为它一路静默。
+    # 后果不是理论上的：真有色脚本踩过 —— 把 `path` 声明成 local 之后
+    # **函数体内的命令全找不到**（`path` 绑着 `$PATH`，清掉它 `wc` 就没了），
+    # 输出变成**空**，而 lint 说「通过」。这个 bug 花了很久才定位，因为它一路静默。
     hit="$(grep -nE '^[[:space:]]*local([[:space:]]+-[A-Za-z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)*[[:space:]]+path([[:space:]=]|$)' "$f" 2>/dev/null || true)"
     if [[ -n "$hit" ]]; then
       bad "${f#"$ROOT_DIR"/} 把保留变量 path 声明成了 local（会清空 PATH）：$hit"
@@ -614,62 +442,6 @@ check_no_local_path() {
     fi
   done
   (( found )) || ok
-}
-
-# ── 10. private-sync 只剩 status（动作已移进 macview）───────────────────────
-#
-# 2026-09-29 用户定「同步功能只在 GUI 上有」：pull/push 连同 gitconfig
-# 进场（adopt）一起搬进 macview，脚本只留只读的 status。这一节守三件事：
-#   1. 动作代码**不回流**（do_pull/do_push/adopt/backup/copy/sync_dir）——
-#      加回去 = 同步动作又能绕过界面的确认清单在终端裸跑；
-#   2. usage 不再教 pull/push，且收到这两个参数有**去处提示**（不静默 ——
-#      静默失败会让人以为同步跑过了）；
-#   3. status 还在报契约要的字段：do_json 仍调 carrier_looks_like_private
-#      （`looks_like_private` 是契约 §2.14 的字段，纪律 4 靠它提前拦）。
-# 动作的**功能**测试在 macview 仓的 harness 夹具里（`scripts/preview-shot.sh`
-# 跑不过 = 夹具挂）—— 动作逻辑搬到哪，测试跟着搬到哪，不留查不着的盲区。
-check_private_sync_status_only() {
-  section "private-sync 只剩 status（动作在 macview）"
-
-  local sync="$ROOT_DIR/scripts/macos/private-sync.zsh"
-  [[ -f "$sync" ]] || { warn "private-sync.zsh 不在，跳过"; return; }
-
-  # 1) 动作函数不回流。
-  local leaked
-  leaked="$(grep -nE '^(do_pull|do_push|adopt_gitconfig|backup_live|copy_one|sync_dir)\(\)' "$sync" || true)"
-  if [[ -z "$leaked" ]]; then
-    ok
-    echo "  没有动作函数（do_pull / do_push / adopt / backup / copy / sync_dir）"
-  else
-    bad "动作代码回流进脚本了 —— 同步动作只该在 macview 里做："
-    print -r -- "$leaked" | sed 's/^/    /'
-  fi
-
-  # 2a) usage 不再教 pull/push。
-  local usage_block
-  usage_block="$(sed -n '/^usage()/,/^}/p' "$sync")"
-  if print -r -- "$usage_block" | grep -q '<status|pull|push>'; then
-    bad "usage 还在教 pull/push —— 那两个动作不在脚本里了"
-  else
-    ok
-    echo "  usage 只教 status"
-  fi
-
-  # 2b) 收到 pull/push 给去处提示，不静默。
-  if grep -q 'pull|push)' "$sync" && grep -q '已移进 macview' "$sync"; then
-    ok
-    echo "  pull/push 参数有去处提示（退出 1）"
-  else
-    bad "收到 pull/push 应提示「已移进 macview」并退出 1 —— 静默失败会让人以为同步跑过了"
-  fi
-
-  # 3) looks_like_private 字段还活着。
-  if grep -q 'carrier_looks_like_private && echo 1' "$sync"; then
-    ok
-    echo "  status --json 仍报 looks_like_private"
-  else
-    bad "status --json 少了 looks_like_private —— 界面没法提前说「像是指错了」"
-  fi
 }
 
 # ── 主流程 ──────────────────────────────────────────────────────────────
@@ -682,13 +454,9 @@ main() {
   check_prefs
   check_usage_steps
   check_path_ownership
-  check_private_slots
   check_syntax
-  check_private_json
-  check_private_content
   check_macview_query_json
   check_no_local_path
-  check_private_sync_status_only
 
   echo ""
   if (( _fail == 0 )); then

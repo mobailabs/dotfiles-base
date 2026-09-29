@@ -22,20 +22,18 @@
 # **没有兜底** —— dotfiles 改了 `zshrc` 的 source 顺序，macview 不会知道，
 # 会画出过期的链。所以只有「每次读一遍」这一条不漂移的路。
 #
-# ### 2. 边分三类，因为「能不能点开」不同
+# ### 2. 边分两类，因为「能不能点开」不同
 #
-# `source` 的目标有三种：
+# `source` 的目标有两种：
 #
 #   · **repo**   —— 目标是仓库里的文件（`~/.exports` 其实链到仓库的
 #     `env/exports`）。这类**可以在 macview 里点开**。
-#   · **private** —— 目标是私有 overlay（`~/.zshrc.local`）。**存在就加载、
-#     不存在就跳过**，而且内容不在仓库里 —— 界面只说「如果它在就加载」。
 #   · **external** —— 目标是别的东西（Homebrew 装的插件、`~/.bun/_bun`、
-#     oh-my-zsh 本体）。不在仓库里，界面只列出、不给「打开仓库文件」。
+#     oh-my-zsh 本体、用户自己的脚本）。不在仓库里，界面只列出、
+#     不给「打开仓库文件」。
 #
-# 怎么分辨：**靠 `link-dotfiles.zsh` 的 `DOTFILE_LINKS`**（那 19 个落点的
-# 目标 → 源的映射）。`~/.exports` 在表里 → 对应 `env/exports`；不在表里
-# 但在 `$HOME` 下的 `.local` 之类 → private；其余 → external。
+# 怎么分辨：**靠 `link-dotfiles.zsh` 的 `DOTFILE_LINKS`**（那些落点的
+# 目标 → 源的映射）。`~/.exports` 在表里 → 对应 `env/exports`；其余 → external。
 # **不在这里再抄一份落点表**（抄一份 = 两份声明 = 迟早漂移，同 link-status）。
 #
 # ## 解析器的边界（说清楚，免得以为它无所不能）
@@ -229,7 +227,7 @@ parse_source_line() {
 
 # ── 把一个 source 目标分类 ──────────────────────────────────────────────
 #
-# 输出（全局变量）：EDGE_KIND（repo/private/external）、EDGE_REL （repo 时的
+# 输出（全局变量）：EDGE_KIND（repo/external）、EDGE_REL （repo 时的
 # 仓库相对路径，否则空）、EDGE_DISPLAY（给人看的目标）。
 EDGE_KIND=""; EDGE_REL=""; EDGE_DISPLAY=""
 
@@ -268,15 +266,6 @@ classify_target() {
         return
       fi
     done
-  fi
-
-  # 是 `$HOME` 下的 `.local`（或表外的点文件）→ private overlay。
-  # 判据：目标在 `$HOME` 下，且**没有**出现在落点表里 —— 那就是私有的
-  # 本地覆盖（`.zshrc.local` / `.envconfig.local` 这类）。
-  if [[ "$home_rel" == *.local || "$home_rel" == *.local.* ]]; then
-    EDGE_KIND="private"
-    EDGE_DISPLAY="$target"
-    return
   fi
 
   # 其余：外部（Homebrew / oh-my-zsh / bun / 用户自己的 path）。

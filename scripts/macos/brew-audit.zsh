@@ -68,7 +68,7 @@ fi
 # 先补齐，否则会对着一台装好 brew 的机器报「brew not found」。
 source "$SCRIPT_DIR/brew-env.zsh" || true
 
-# ── JSON 工具（照 private-state.zsh）────────────────────────────────────
+# ── JSON 工具（和别的只读检测器同一套）────────────────────────────────────
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -114,9 +114,8 @@ basename_of() { echo "${1##*/}"; }
 compute_audit() {
   # label|kind|path —— 与 macview 的 packageListFiles 对应。
   #
-  # ⚠️ 只覆盖**公共仓库**的这 2 份。私有源里的 `packages/*.private.txt`
-  # 本脚本读不到（私有源路径不在公开仓库里，见 private.md 的契约）。
-  # 所以两边在「用户配了私有源」时结果会不同 —— 这是已知差异，不是 bug。
+  # ⚠️ 只覆盖**公共仓库**的这 2 份。用户自己另装的包不在这里查 ——
+  # 本脚本只对账「仓库声明的」vs「本机装的」，不猜用户额外加了什么。
   #
   # 以前是 3 条（common formulae / macos formulae / casks）—— 前两份已合并
   # 成 packages/macos/brew-cli.txt（仓库只做 macOS）。

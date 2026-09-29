@@ -9,7 +9,7 @@
 #
 # ## 它不做什么
 #
-# **不链接、不改任何文件。** 和 private-state.zsh / brew-audit.zsh 是同一类
+# **不链接、不改任何文件。** 和 brew-audit.zsh 是同一类
 # 只读检测器。要真的链，调 `install.zsh link`（那是另一件事，另一个进程）。
 #
 # ## 落点清单从哪来 —— 这是本脚本最要紧的决定
@@ -79,7 +79,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 
-# ── JSON 工具（照抄 private-state.zsh，理由见那里）──────────────────────
+# ── JSON 工具（和别的只读检测器同一套）──────────────────────
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"
@@ -94,7 +94,7 @@ json_str_or_null() {
   if [[ -z "${1:-}" ]]; then printf 'null'; else printf '"%s"' "$(json_escape "$1")"; fi
 }
 
-# $HOME 下的绝对路径（和 private-state.zsh 的 json_home_path 一致）。
+# $HOME 下的绝对路径（展开成绝对路径，便于界面显示）。
 # 用绝对路径而不是 `~`：JSON 里 `~` 不会被任何标准工具展开，等于给了一个
 # 「看起来能直接用、其实不能」的值。
 json_home_path() {
