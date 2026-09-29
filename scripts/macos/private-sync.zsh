@@ -1,6 +1,7 @@
 #!/usr/bin/env zsh
 #
-# 私有配置的同步：在「中转目录」和「本机生效目录」之间搬文件。
+# 私有配置的同步**状态**：比对「中转目录」和「本机生效目录」两边各是什么样。
+# **只读** —— 不复制、不备份、不动任何一边（2026-09-29 起动作也移走了，见下）。
 #
 # ## 为什么要有这个脚本（而不直接用 git）
 #
@@ -17,12 +18,21 @@
 # 同步服务，只要它能把文件落到一个目录，这个脚本**一个字都不用改** ——
 # 交接面就是「一个目录」，不是某个协议。
 #
-# ## 三个子命令
+# ## 只有一个子命令
 #
-#   status  只看：两边每个文件是「一致 / 不一致 / 只在一边」。**只读。**
-#           加 `--json` 时**连文件内容一起列出来**（见下）。
-#   pull    CARRIER → LIVE：新机器进场 / 别的机器改了东西拿过来。
-#   push    LIVE → CARRIER：本机改了东西，交出去给别的机器。
+#   status  看两边每个文件是「一致 / 不一致 / 只在一边」。**只读。**
+#           加 `--json` 时**连文件内容一起列出来**（见下），给 macview 读。
+#
+# ## 同步动作（拿过来 / 交出去）在哪：**macview**（2026-09-29 用户定）
+#
+# 原来这里还有 pull / push。用户拍板「**同步功能只在 GUI 上有**」——
+# 状态查脚本、动作做进界面（和 git 页同一待遇：那一页也没有辅助脚本，
+# add/commit/push 是 macview 自己做的）。所以：
+#
+#   · 动作已从本脚本删除；语义（方向、覆盖前备份、已知名单、gitconfig
+#     进场、幂等、中转目录前置检查）记录在 macview-contract.md
+#     「三、编辑侧 · 私有同步动作」，实现在 macview 里；
+#   · 本脚本收到 pull / push 参数 → 打一句去处提示、退出 1（不静默）。
 #
 # ## 要不要列内容（2026-09-28 用户定的：**列，含 token 明文**）
 #
@@ -43,36 +53,34 @@
 # `truncated: true`。⚠️ 不封顶的话一个 5 MB 文件能把 JSON 撑爆，macview
 # 解析失败 → 显示成「没能查」→ 什么都看不到。
 #
-# ## 安全规则（和 clone-dotfiles.zsh 同一个血统）
+# ## status 的纪律
 #
-# 1. **pull 之前先看 CARRIER 像不像私有源**：5 个已知文件里一个都没有 →
-#    拒绝。那很可能是路径指错了，往 LIVE 里倒一堆别的东西没有意义。
-# 2. **覆盖之前先备份**：LIVE 里将被覆盖、且内容不一样的文件，先抄一份到
-#    `~/.config/dotfiles/private-backup/<时间>/`。**静默覆盖等于丢配置。**
-# 3. **只碰已知的 5 个文件**（+ `machine/` 子树，见下）：两边各自的多余文件
-#    一律不动 —— 不删除、不复制。同步脚本没有资格决定「这个文件该不该存在」。
-# 4. **幂等**：连跑两遍 pull，第二遍是 no-op（「已经一致」），退出 0。
-# 5. 不联网、不提权、不读文件内容（只比对 + 复制）。
+# 1. **只读**：只比对、只列，绝不写任何一边（动作归 macview，见上）。
+# 2. **只报事实，不报「该不该同步」**：「不一致」是事实；「该拿过来 / 交出去」
+#    是判断 —— 判断归界面和用户，脚本不掺。
+# 3. **只认已知的 5 个文件**（+ `machine/` 子树，见下）：两边各自的多余文件
+#    不进名单 —— 同步没有资格决定「这个文件该不该存在」。
+# 4. 不联网、不提权；内容只进本机的 `--json`（给 macview 屏幕上看），
+#    脚本不发送任何东西。
 #
-# ## 同步哪几个文件
+# 动作侧的对应纪律（中转目录像不像私有源、覆盖前备份、幂等）由 macview
+# 执行，写在契约同一节 —— 那边删掉脚本动作时，规则跟着搬了家。
+#
+# ## status 比对哪几个文件
 #
 # 和 private-state.zsh 的槽位表是**同一份名单**（`source_rel` 那一列）：
 # `aliases`、`zshrc.local`、`envconfig.local`、`gitconfig.local`、
 # `ssh/config.local`，外加 `machine/` 子树（按机器分的文件，见下）。
 #
-# ⚠️ `gitconfig.local` 的落点是**直写文件**：prompt-once 写
-# `~/.gitconfig.local`（不是符号链接），而 push/pull 收发的是 LIVE
-# 槽位 —— 天生不相连，直写的身份就永远不同步。所以 pull/push 开跑前
-# 先跑 `adopt_gitconfig`（见下），把落点搬进 LIVE、落点换成指向它的
-# 链（原文件备份，退得回）：
-#   · 落点已是链 / 两边都没有 → 形态已对，不碰；
-#   · 落点真文件、LIVE 没有 → 复制并校验后备份搬入，落点换链；
-#   · 两边内容一致 → 纯结构动作，备份后落点换链；
-#   · 两边都有且不一样 → **两边都不动，只报出来** —— 哪份对是用户的
-#     判断，脚本不替人决定（和规则 2 的备份同一个理由）。
-# 换完之后 status / pull / push 走的全是通用逻辑，一处特判都不留。
+# ⚠️ `gitconfig.local` 的落点常是**直写文件**：prompt-once 写
+# `~/.gitconfig.local`（不是符号链接），而同步收发的是 LIVE 槽位 ——
+# 天生不相连，直写的身份就永远不同步。**接上它们的进场（adopt）已随动作
+# 移进 macview**：拿过来/交出去开跑前先把落点搬进 LIVE、落点换成指向它的
+# 链（原文件备份，退得回）；两边都有且不一样 → **两边都不动、只报告** ——
+# 哪份对是用户的判断，动作不替人决定。status 对没进场的落点**只提示、
+# 不搬**（`do_status` 末尾那两行），永远只读。
 # 身份（name/email）多机器一般是一样的；不一样就别同步它，
-# 从 CARRIER 里删掉那个文件（规则 3：没有的文件不动）。
+# 从中转目录里删掉那个文件（名单外的文件两边都不动）。
 #
 # ## machine/ 子树
 #
@@ -87,7 +95,6 @@ SCRIPT_DIR="$(cd "$(dirname "${0:A}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 LIVE_DIR="${PRIVATE_DIR:-$HOME/private-dotfiles}"
-BACKUP_ROOT="$HOME/.config/dotfiles/private-backup"
 
 # 同步的文件名单：与 private-state.zsh 的 SLOTS 表 `source_rel` 列一致。
 # ⚠️ 改这里要同步改那边 —— 两处各写各的会漂移（只差一个文件名，
@@ -106,24 +113,23 @@ SYNC_DIRS=(
 
 usage() {
   cat <<EOF
-Usage: zsh scripts/macos/private-sync.zsh <status|pull|push> [options]
+Usage: zsh scripts/macos/private-sync.zsh status [options]
 
   status              比对 CARRIER 和 LIVE（只读，永远退出 0）
-  pull                CARRIER → LIVE（新机器进场 / 拿别的机器的改动）
-  push                LIVE → CARRIER（本机改完交出去）
+                      加 --json 时出结构化结果（含文件内容，给 macview 读）。
 
-  加 --json 时 status 改出结构化结果（给 macview 读，只读）。
   ⚠️ --json **不要求** --carrier：没配中转目录也是一个**合法状态**
-  （界面要显示「没配」，不是报错）。而 pull/push 没 carrier 仍然退出 1。
+  （界面要显示「没配」，不是报错）。
+  ⚠️ pull / push 已移进 macview（私有同步页）—— 本脚本只剩 status。
 
 Options:
-  --carrier <目录>    中转目录（默认：\$PRIVATE_SYNC_DIR，必须给其中一个）
+  --carrier <目录>    中转目录（默认：\$PRIVATE_SYNC_DIR；不给就是「没配」）
   --live <目录>       本机生效目录（默认：\$PRIVATE_DIR 或 ~/private-dotfiles）
   -h, --help          显示这段
 
 退出码：
-  0  成功（含「已经一致」、含 status）
-  1  失败（CARRIER 不像私有源 / 复制失败 / 参数错）
+  0  成功（status 永远 0 —— 「没配」也是要显示的状态，不是失败）
+  1  参数错 / 传了 pull 或 push（动作在 macview，脚本不代跑）
 EOF
 }
 
@@ -143,14 +149,10 @@ while (( $# > 0 )); do
   esac
 done
 
-# ⚠️ **只有 pull/push 缺 carrier 才算错。** status 不算 ——
-# 「没配中转目录」是界面**要显示的一个状态**（`carrier.set = false`），
-# 不是错误。缺了就当空字符串处理，下面所有比对自然全是「只在本机」/「都没有」。
-# 早先这里无条件 exit 1，那会让 macview 永远读不到「没配」这个状态。
-if [[ -z "$CARRIER" && "$cmd" != "status" ]]; then
-  echo "Error: 没给中转目录。用 --carrier <目录>，或设 PRIVATE_SYNC_DIR。" >&2
-  exit 1
-fi
+# carrier **永远可空** —— 「没配中转目录」是界面**要显示的一个状态**
+# （`carrier.set = false`），不是错误。缺了就当空字符串处理，比对自然
+# 全是「只在本机」/「都没有」。（早先这里对 pull/push 无条件 exit 1 ——
+# 那两个动作 2026-09-29 移进 macview 了，见文件头。）
 
 # ── 小工具 ────────────────────────────────────────────────────────────────
 
@@ -167,115 +169,19 @@ carrier_looks_like_private() {
   return 1
 }
 
-# 备份 LIVE 里将被覆盖的文件（内容不一样才备，一样就不用）。
-backup_live() {
-  local rel="$1"
-  local src="$LIVE_DIR/$rel"
-  [[ -f "$src" ]] || return 0
-  local ts
-  ts="$(date +%Y%m%d-%H%M%S)"
-  local dest="$BACKUP_ROOT/$ts/$rel"
-  mkdir -p "$(dirname "$dest")"
-  cp -p "$src" "$dest"
-  echo "  已备份 $rel → $BACKUP_ROOT/$ts/$rel"
-}
 
-# 复制一个文件（建父目录，保 mtime）。
-copy_one() {
-  local from="$1" to="$2"
-  mkdir -p "$(dirname "$to")"
-  cp -p "$from" "$to"
-}
-
-# 同步 machine/ 这类子树：有就整目录复制（覆盖同名），没有就跳过。
-# ⚠️ 不删除目标里多出来的文件 —— 规则 3。
-# ⚠️ 先比对，一样就不动手 —— 否则每次 pull 都算"有改动"，幂等就破了。
-sync_dir() {
-  local from="$1" to="$2" rel="$3"
-  if [[ ! -d "$from" ]]; then
-    return 1
-  fi
-  if [[ -d "$to" ]] && diff -rq "$from" "$to" >/dev/null 2>&1; then
-    return 1
-  fi
-  mkdir -p "$to"
-  # 用 tar 搬：保权限、保隐藏文件，不跟符号链接跑。
-  (cd "$from" && tar cf - .) | (cd "$to" && tar xf -)
-  echo "  已同步目录 $rel/"
-  return 0
-}
-
-# ── gitconfig.local 进场（pull/push 开跑前各做一次）───────────────────────
+# ── gitconfig.local 进场（已移进 macview）────────────────────────────────
 #
-# 落点 `~/.gitconfig.local` 由 prompt-once **直写**（真实文件），而
-# push/pull 收发的是 LIVE 槽位 —— 两者天生不相连，直写的身份永远不同步。
-# 这个函数把它们接上，方式是**只改落点形态**：内容搬进 LIVE（复制并校验）、
-# 落点换成指向它的链（原文件先备份，退得回）。
+# 背景没变：落点 `~/.gitconfig.local` 由 prompt-once **直写**（真实文件），
+# 而同步收发的是 LIVE 槽位 —— 两者天生不相连，直写的身份永远不同步。
+# 进场 = **只改落点形态**：内容搬进 LIVE（复制并校验）、落点换成指向它的链
+# （原文件先备份，退得回）；**两边都有且不一样 → 两边都不动、只报告** ——
+# 哪份对是用户的判断，动作不替人决定（结构动作可自动，价值判断不行）。
 #
-# 纪律：**结构动作可以自动，价值判断不行。**
-#   · 两边都有且**不一样** → 两边都不动、只报出来 —— 哪份对是用户的
-#     判断，脚本不替人决定（同规则 2 备份的逻辑：不可逆的先留退路）；
-#   · 内容一致或只有一边 → 搬运/换链是可逆的，带备份自动做完。
-# 换完之后 status / pull / push 走的全是通用逻辑，**一处特判都不留**。
-adopt_gitconfig() {
-  local home="$HOME/.gitconfig.local"
-  local live="$LIVE_DIR/gitconfig.local"
-  local ts dest
-
-  # 已经是链（含断链）：形态对了，内容归 pull/push 通用逻辑管。
-  [[ -L "$home" ]] && return 0
-
-  # 落点不存在：私有源里有就补一条链 —— 本机没配过 git 身份时，
-  # 链过去 git 立刻可用，这正是同步的意义。
-  if [[ ! -e "$home" ]]; then
-    if [[ -f "$live" ]]; then
-      ln -s "$live" "$home"
-      echo "  gitconfig.local: 落点原来不存在，已链接到私有源。"
-    fi
-    return 0
-  fi
-
-  # 到这里落点是**真文件**。
-  if [[ -e "$live" ]]; then
-    if cmp -s "$home" "$live"; then
-      # 内容一致：纯结构动作 —— 备份后换链。
-      ts="$(date +%Y%m%d-%H%M%S)"
-      dest="$BACKUP_ROOT/$ts/gitconfig.local.home"
-      mkdir -p "$(dirname "$dest")"
-      mv "$home" "$dest"
-      if ! ln -s "$live" "$home"; then
-        mv "$dest" "$home"
-        echo "  gitconfig.local: 建链失败，落点已还原。" >&2
-        return 1
-      fi
-      echo "  gitconfig.local: 两边内容一致，落点换成链接（原文件备份 → $dest）。"
-    else
-      echo "  ⚠️ gitconfig.local: 落点和私有源里都有、内容不一样 —— 两边都没动。"
-      echo "    哪份对你自己定：把对的那份放进 $live，再把 $home 换成指向它的链。"
-    fi
-    return 0
-  fi
-
-  # LIVE 没有 → 复制进去（**校验通过才动落点**），备份后换链。
-  mkdir -p "$(dirname "$live")"
-  cp -p "$home" "$live"
-  if ! cmp -s "$home" "$live"; then
-    rm -f "$live"
-    echo "  gitconfig.local: 复制进私有源后校验不一致，已停手（落点没动）。" >&2
-    return 1
-  fi
-  ts="$(date +%Y%m%d-%H%M%S)"
-  dest="$BACKUP_ROOT/$ts/gitconfig.local.home"
-  mkdir -p "$(dirname "$dest")"
-  mv "$home" "$dest"
-  if ! ln -s "$live" "$home"; then
-    mv "$dest" "$home"
-    rm -f "$live"
-    echo "  gitconfig.local: 建链失败，已还原落点、清掉私有源里的副本。" >&2
-    return 1
-  fi
-  echo "  gitconfig.local: 直写落点搬进私有源，落点换成链接（原文件备份 → $dest）。"
-}
+# 2026-09-29 动作移进 macview 时，`adopt_gitconfig` 连同 pull/push 一起
+# 搬走了 —— 语义记录在 macview-contract.md「三、编辑侧 · 私有同步动作」，
+# 实现在 macview 的同步动作里（搬完之后走通用逻辑，一处特判都不留）。
+# status 对没进场的落点**只提示、不搬**（`do_status` 末尾那两行）。
 
 # ── status（只读） ────────────────────────────────────────────────────────
 
@@ -301,13 +207,13 @@ do_status() {
   echo "一致 $same · 不一致 $diff · 只在中转 $only_carrier · 只在本机 $only_live"
   # gitconfig.local 还没进场时提一句 —— 否则用户在这页看不出
   # 「为什么 git 身份没跟着同步」，只会以为同步坏了。
-  # ⚠️ 只提示、不搬：status 永远只读（进场只在 pull/push 里做）。
+  # ⚠️ 只提示、不搬：status 永远只读（进场由 macview 的拉/推动作做）。
   if [[ -f "$HOME/.gitconfig.local" && ! -L "$HOME/.gitconfig.local" ]]; then
     if [[ -e "$LIVE_DIR/gitconfig.local" ]] \
        && ! cmp -s "$HOME/.gitconfig.local" "$LIVE_DIR/gitconfig.local" 2>/dev/null; then
-      echo "提示: ~/.gitconfig.local 和私有源里的 gitconfig.local 不一样 —— pull/push 不会替你决定，先自己对齐。"
+      echo "提示: ~/.gitconfig.local 和私有源里的 gitconfig.local 不一样 —— macview 的拿过来/交出去不会替你决定，先自己对齐。"
     else
-      echo "提示: ~/.gitconfig.local 还是直写文件 —— 跑一次 pull 或 push 会先把它搬进私有源（带备份）并换成链接。"
+      echo "提示: ~/.gitconfig.local 还是直写文件 —— 在 macview 私有同步页点「拿过来 / 交出去」会先把它搬进私有源（带备份）并换成链接。"
     fi
   fi
 }
@@ -324,11 +230,12 @@ do_status() {
 # ## 报什么、为什么不报什么
 #
 # **只报事实**（每个文件两边各是什么状态），**不判断该不该同步**。
-# 「不一致」是事实；「该 pull」是判断 —— 判断归 macview（它知道用户意图），
-# 脚本只负责如实说。
+# 「不一致」是事实；「该拿过来 / 交出去」是判断 —— 判断归 macview 和用户
+# （它知道用户意图），脚本只负责如实说。
 #
-# ⚠️ **不含任何文件内容。** 这是私密配置；只报存在性和「内容是否相同」，
-# 绝不把内容送出去。macview 也只显示状态。
+# ⚠️ **含文件内容**（2026-09-28 用户定的，见文件头「要不要列内容」）：
+# `content_carrier` / `content_live` 两边都给、含 token 明文 —— 内容只进
+# 本机的 macview 屏幕，脚本不发送任何东西。上限见下。
 json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
@@ -524,83 +431,22 @@ do_json() {
   printf '%s' "$out"
 }
 
-# ── pull / push ───────────────────────────────────────────────────────────
-
-# 把 KNOWN 文件从 $1 搬到 $2（backup 语义由调用方定：pull 才备份）。
-do_pull() {
-  if ! carrier_looks_like_private; then
-    echo "Error: $CARRIER 里一个私有文件都没有 —— 路径可能指错了，没动本机。" >&2
-    exit 1
-  fi
-  # 先进场再比对 —— 否则直写落点永远进不了下面的通用循环。
-  adopt_gitconfig
-  local f a b changed=0
-  for f in "${SYNC_FILES[@]}"; do
-    a="$CARRIER/$f"; b="$LIVE_DIR/$f"
-    [[ -e "$a" ]] || continue
-    if [[ -e "$b" ]] && cmp -s "$a" "$b" 2>/dev/null; then
-      continue
-    fi
-    # LIVE 里有且不一样 → 先备份（规则 2）。
-    if [[ -e "$b" ]]; then
-      backup_live "$f"
-    fi
-    copy_one "$a" "$b"
-    echo "  已拿过来 $f"
-    (( changed++ )) || true
-  done
-  local d
-  for d in "${SYNC_DIRS[@]}"; do
-    if [[ -d "$CARRIER/$d" ]]; then
-      if sync_dir "$CARRIER/$d" "$LIVE_DIR/$d" "$d"; then
-        (( changed++ )) || true
-      fi
-    fi
-  done
-  if (( changed == 0 )); then
-    echo "已经一致，什么都没做。"
-  else
-    echo "拿过来 $changed 项。改动即生效（下次开 shell）—— 要确认去 macview 对应页看一眼。"
-  fi
-}
-
-do_push() {
-  local f a b changed=0
-  # 同 do_pull：先进场。push 还没配 carrier 内容也照常（它会创建），
-  # 进场只依赖 LIVE，不依赖 carrier 像不像私有源。
-  adopt_gitconfig
-  for f in "${SYNC_FILES[@]}"; do
-    a="$LIVE_DIR/$f"; b="$CARRIER/$f"
-    [[ -e "$a" ]] || continue
-    if [[ -e "$b" ]] && cmp -s "$a" "$b" 2>/dev/null; then
-      continue
-    fi
-    # push 不备份 CARRIER 那边 —— CARRIER 是中转，不是真相；
-    # 真相在 LIVE（有备份的是 pull 那条路）。中转丢了可以从任一机器重新 push。
-    copy_one "$a" "$b"
-    echo "  已交出去 $f"
-    (( changed++ )) || true
-  done
-  local d
-  for d in "${SYNC_DIRS[@]}"; do
-    if [[ -d "$LIVE_DIR/$d" ]]; then
-      if sync_dir "$LIVE_DIR/$d" "$CARRIER/$d" "$d"; then
-        (( changed++ )) || true
-      fi
-    fi
-  done
-  if (( changed == 0 )); then
-    echo "已经一致，什么都没做。"
-  else
-    echo "交出去 $changed 项。记得用你们的同步方式把中转目录送出去。"
-  fi
-}
-
+# ── 入口 ────────────────────────────────────────────────────────────────────
+#
+# 同步动作（pull/push）2026-09-29 移进 macview —— 行为蓝本曾是本文件的
+# do_pull/do_push（覆盖前备份、只碰已知名单、幂等、先进场再比对），
+# 现在活在那边，语义记录在 macview-contract.md「三、编辑侧 · 私有同步动作」。
+# 这里收到那两个参数**不静默失败**：打一句去处，退出 1。
 case "$cmd" in
   status)
     if (( AS_JSON )); then do_json; else do_status; fi
     ;;
-  pull)   do_pull ;;
-  push)   do_push ;;
+  -h|--help)
+    usage; exit 0
+    ;;
+  pull|push)
+    echo "pull/push 已移进 macview —— 同步功能只在 GUI 上有（私有同步页的「拿过来 / 交出去」）。" >&2
+    exit 1
+    ;;
   *) echo "Unknown command: $cmd" >&2; usage >&2; exit 1 ;;
 esac
