@@ -150,7 +150,8 @@ EOF
 这是最容易出错的地方。往一个文件里写了值，**但标准文件里没人读它**，
 值就永远不生效，而且不报错。
 
-本仓库只留**通用**加载口，不点名任何具体文件：
+本仓库只留**通用**加载口；`install.zsh` 只顺手把那几个口的**空壳**建出来
+（空文件 + 注释），里面放什么，本仓库不管也不知道：
 
 | 你放的东西 | 靠什么被加载 | 在哪 |
 |---|---|---|
@@ -159,6 +160,18 @@ EOF
 | `~/.gitignore`（全局忽略） | `[core] excludesfile = ~/.gitignore` | `src/macos/config/git/gitconfig` |
 | `~/.gitattributes`（全局属性） | `[core] attributesfile = ~/.gitattributes` | `src/macos/config/git/gitconfig` |
 | `~/.ssh/config` 里被 `Include` 的文件 | 用户在 `~/.ssh/config` 自己写 `Include ...` | 用户自己的文件（不在仓库里） |
+
+`install.zsh`（或只跑这一步的 `install.zsh seed`）会建出三份私有配置的
+**空壳**（空文件 + 注释，**已存在就不动**），内容自己填：
+
+| 空壳 | 装什么 |
+|---|---|
+| `~/.config/dotfiles/conf.d/private.zsh` | 环境变量 / 别名 / 函数 / token |
+| `~/.config/git/config` | git 身份、凭据等（`~/.gitconfig` 里故意不写身份） |
+| `~/.ssh/config` | 主机、跳板机、代理等 |
+
+建壳在 `scripts/macos/private-seed.zsh`（幂等）；它只管**建壳**，改内容用
+你自己的编辑器（或者 macview 的「私有」页）。
 
 `conf.d` **是空目录也完全正常**（`(N)` 通配保证没有匹配时不报错）。谁（用户、
 macview……）往里放东西、放什么，本仓库不关心，也不需要知道。
