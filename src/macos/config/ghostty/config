@@ -38,6 +38,8 @@ palette = 14=#64d2ff
 palette = 15=#ffffff
 
 # ---- Ghostty 行为 ----
+# 行高拉高 8%：给 p10k 的 powerline 分隔符（\ue0b0 那类）留余地。
+# ⚠️ 如果装完 p10k 发现分隔符行间有缝/被裁，把这里调到 12% 或整条删掉。
 adjust-cell-height = 8%
 
 # 默认不自动进入 tmux。想进就手动跑 `tal` / `tcd`（见 aliases.sh），
@@ -80,13 +82,22 @@ font-family = Xiaolai Mono
 font-size = 14
 font-thicken = true
 # 已有 font-thicken，避免过度加粗
+
+# 斜杠零（JetBrainsMono 默认是点式零；斜杠零在终端里更易辨认）。
+# 连字（=> != 等）默认就开（calt），这里不用再写。
+font-feature = zero
+
 mouse-hide-while-typing = true
 
 # macOS 外观与窗口
+# ⌘ 键行为：false = Option 保持 macOS 原生（Option+b 输 ∫）；
+# 想当 Alt 用（tmux M-、readline Alt+b/f/d、nvim <M-…>）改成 left / true。
+# 保持 false 是有意的 —— 中文输入用得上 Option 的组合。
 macos-option-as-alt = false
-# 使用原生边框但隐藏标题栏：保留圆角与阴影，更精致
+# 只隐藏标题栏，**保留**原生边框与圆角。
+# ⚠️ 不要再加 `window-decoration = false` —— 那个等价于 `none`，会把边框、
+#    圆角**和标签页**一起干掉（macOS 系统强制）。两者是互斥的意图。
 macos-titlebar-style = hidden
-window-decoration = false
 window-padding-color = extend
 window-padding-balance = true
 
@@ -97,9 +108,8 @@ confirm-close-surface = false
 macos-icon = custom
 macos-custom-icon = ~/.config/ghostty/ghostty-white.icns
 
-# 设定初始窗口尺寸（按网格：列x行）
-#window-width = 220
-#window-height = 55
+# 启动即最大化（全屏铺开）。原来在这里的两行 `window-width/height`
+# 是死代码（maximize 之后它们不生效），已删。
 maximize = true
 
 # 渲染与观感优化
