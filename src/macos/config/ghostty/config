@@ -50,7 +50,17 @@ clipboard-write = allow
 # 鼠标选择优先：按住 Shift 时扩展终端选区
 mouse-shift-capture = true
 
-font-family = TX-02, LXGW WenKai
+# ---- 字体 ----
+# 主字体 = 等宽英文（代码）；第二个 = 中文回退（fallback）。
+#
+# Ioskeley Mono：Iosevka 构建的免费 Berkeley Mono 仿作（OFL），
+#   brew cask `font-ioskeley-mono`。等宽、几何感，适合代码。
+# Xiaolai Mono（小赖字体等宽）：LXGW 作者的 CJK 手写体，只有 Regular，
+#   brew cask `font-xiaolai-mono`。**只当中文回退** —— 英文不是它的强项。
+#
+# ⚠️ 两个都用 brew cask 装（不在这份仓库里，字体二进制不入库）。
+#   没装时 ghostty 静默回退到系统默认等宽字体，不报错。
+font-family = Ioskeley Mono, Xiaolai Mono
 font-size = 14
 font-thicken = true
 # 已有 font-thicken，避免过度加粗
