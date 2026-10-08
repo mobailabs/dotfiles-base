@@ -49,8 +49,12 @@ adjust-cell-height = 8%
 copy-on-select = clipboard
 # 显式允许程序通过 OSC 52 写入系统剪贴板
 clipboard-write = allow
-# 鼠标选择优先：按住 Shift 时扩展终端选区
-mouse-shift-capture = true
+# 鼠标选择：常态鼠标事件归 tmux（见 tmux.conf 的 `mouse on`），拖选由 tmux
+# 在 copy-mode 里完成、经 OSC 52 写系统剪贴板。
+# `never` = 按住 Shift **强制用终端自己的选区**，tmux 抢不走 —— 这是「绕开
+# tmux 选屏幕文字」的逃生舱（选状态栏/边框、跨 pane 的纯屏幕文字、tmux 卡住
+# 时兜底都会用到）。用 true 的话 Shift 会发给 tmux，逃生舱就失效了。
+mouse-shift-capture = never
 
 # ---- 字体 ----
 # 主字体 = 等宽英文（代码）；第二个 = 中文回退（fallback）。
@@ -113,7 +117,10 @@ macos-custom-icon = ~/.config/ghostty/ghostty-white.icns
 maximize = true
 
 # 渲染与观感优化
-alpha-blending = linear-corrected
+# 不设 alpha-blending：macOS 的平台默认是 `native`（Display P3），为这个
+# 平台调过。ghostty 所有非 mac 平台默认才是 `linear-corrected`，那会做 gamma
+# 校正（暗字变细、亮字变粗）—— 和这里的 font-thicken 叠加，文字容易发糊。
+# 想要那个观感再加回：alpha-blending = linear-corrected。
 background-opacity = 0.91
 background-opacity-cells = true
 macos-window-shadow = true
