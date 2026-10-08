@@ -15,13 +15,20 @@ ghostty
 #tailscale-app
 
 # Fonts
-#font-comic-shanns-mono-nerd-font
-#font-lxgw-bright-gb
-#font-lxgw-wenkai
-#font-maple-mono
-#font-maple-mono-cn
+# ⚠️ 下面这两个是 **ghostty 配置（src/macos/config/ghostty/config）里
+#    font-family 正引用的字体** —— 删了就回退到系统默认等宽字体。
+#    改字体要两边一起改：这里换 cask，ghostty 里换家族名。
+# 主字体（英文/代码）。Nerd Font 补丁版：p10k 的 git/目录图标靠它。
+# ghostty 里用 **Mono** 变体（家族名 `JetBrainsMono Nerd Font Mono`）——
+# 图标也压进单格，终端不错位。这个 cask 同时装了 Mono / 普通 / Propo 三套。
+font-jetbrains-mono-nerd-font
+# 中文回退（fallback）。只有 Regular 一档，英文不是它的强项 —— 只补汉字。
+font-xiaolai-mono
+# 其它候选（没在用，留着方便换）：
+#font-ioskeley-mono
 #font-maple-mono-nf
 #font-maple-mono-nf-cn
+#font-lxgw-wenkai
 
 # Development Tools
 #gpg-suite

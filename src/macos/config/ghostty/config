@@ -53,30 +53,30 @@ mouse-shift-capture = true
 # ---- 字体 ----
 # 主字体 = 等宽英文（代码）；第二个 = 中文回退（fallback）。
 #
-# Ioskeley Mono：Iosevka 构建的免费 Berkeley Mono 仿作（OFL，
-#   github.com/ahatem/IoskeleyMono）。等宽、几何感，接近 Berkeley Mono。
-#   brew cask `font-ioskeley-mono` 装的是 **Standard / Unhinted** 家族
-#   （Normal + SemiCondensed，40 个 ttf），家族名就叫 `Ioskeley Mono` ——
-#   就是下面写这个。
-#
-#   ⚠️ 上游有分「编辑器版」和「终端版」：
-#     · 编辑器用 Standard（`Ioskeley Mono`）← brew 装的就是这个
-#     · 终端推荐 Term（`Ioskeley Mono Term`，箭头/制表符占格更规整）
-#   Term 版 **brew 里没有**，要自己从 releases 下 IoskeleyMono-Term.zip。
-#   现在用 brew 的 Standard 版，在 ghostty 里也能用，只是箭头/框线可能略挤。
-#   想换成 Term 版：手动装 zip，然后把下面改成 `Ioskeley Mono Term, Xiaolai Mono`。
-#   图标：brew 版**不含 Nerd Font 补丁**，p10k 的 git/目录图标会缺。
-#   要图标得手动下 `IoskeleyMono-Term-NerdFont.zip`（家族名
-#   `IoskeleyMonoTerm Nerd Font Mono`）。
+# JetBrainsMono Nerd Font Mono：几何感、方正转角，接近 Berkeley Mono 的气质；
+#   Nerd Font 补丁版 → p10k 的 git/目录图标开箱即用。用 **Mono** 变体：
+#   它把所有字形（含图标）都压进单格，终端里不会错位 —— 非 Mono 的 "NF"
+#   变体字形宽窄不一，终端会串行。brew cask `font-jetbrains-mono-nerd-font`。
 #
 # Xiaolai Mono（小赖字体等宽，LXGW 作者的 CJK 手写体，源自濑户字体）：
 #   只有 Regular 一档，**只当中文回退** —— 英文不是它的强项。
-#   brew cask `font-xiaolai-mono`，家族名可能是 `Xiaolai Mono` 或
-#   `Xiaolai Font Mono`（装完用「字体册」确认，不对就改这里）。
+#   brew cask `font-xiaolai-mono`。字体内部家族名就是 `Xiaolai Mono`
+#   （cask 显示名是 `Xiaolai Font Mono`，但 mac 按内部名匹配，所以写前者）。
 #
-# ⚠️ 两个都用 brew cask 装（不在这份仓库里，字体二进制不入库）。
+# ⚠️ ⚠️ ghostty 的 font-family **不能用逗号列表**！它每个值整条是一个家族名，
+#   逗号会被当成名字的一部分（见 ghostty 源码 RepeatableString 的注释），
+#   结果一个都匹配不上、直接回退系统默认字体。多字体回退要**一行一个**：
+#
+#       font-family = 主字体
+#       font-family = 回退字体
+#
+#   （原来的 `TX-02, LXGW WenKai` 就是这么写错的，已改。）
+#
+# ⚠️ 两个字体都由一键配置装（packages/macos/brew-cask.txt 的 Fonts 段）。
+#   改字体要**两边一起改**：cask 清单换包，这里换家族名。
 #   没装时 ghostty 静默回退到系统默认等宽字体，不报错。
-font-family = Ioskeley Mono, Xiaolai Mono
+font-family = JetBrainsMono Nerd Font Mono
+font-family = Xiaolai Mono
 font-size = 14
 font-thicken = true
 # 已有 font-thicken，避免过度加粗
