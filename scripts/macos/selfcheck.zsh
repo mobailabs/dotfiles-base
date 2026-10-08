@@ -7,7 +7,7 @@
 # 这个仓库里的东西是**交叉引用**的：
 #
 #   link-dotfiles.zsh 的 DOTFILE_LINKS   ←→  src/macos/config/ 下真的有那个文件？
-#   README/shell.md 提到的加载点          ←→  zshrc 里真的有那行 source？
+#   文档里提到的仓库路径                    ←→  仓库里真的有那个文件？
 #   prefs.zsh 的顺序表                    ←→  prefs.d/ 下真的有那些文件？
 #   install.zsh 调用的每一个脚本           ←→  scripts/ 下真的存在？
 #
