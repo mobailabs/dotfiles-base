@@ -10,6 +10,7 @@ src/macos/config/
 │   ├── zprofile             → ~/.zprofile    （登录 shell）
 │   ├── zshrc                → ~/.zshrc       （交互 shell）
 │   ├── oh-my-zsh.sh         → ~/.oh-my-zsh.sh
+│   ├── p10k.zsh             → ~/.p10k.zsh    （powerlevel10k 提示符配置）
 │   ├── ohmyzsh.plugins.zsh  → ~/.config/dotfiles/ohmyzsh.plugins.zsh
 │   └── os.zsh               → ~/.config/dotfiles/os.zsh
 ├── env/
@@ -50,6 +51,7 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
    │        └─ eval `brew shellenv`（补全 / man path 的 shell 集成）
    ▼
 .zshrc      仅交互 shell
+            ├─ p10k instant prompt（最顶部，必须在一切 source 之前）
             ├─ zsh-completions 加进 fpath —— 必须在 oh-my-zsh 之前
             ├─ source ~/.oh-my-zsh.sh
             ├─ ~/.exports   → 导出变量
@@ -58,6 +60,9 @@ zsh 的加载顺序是固定的（`zshenv` → `zprofile` → `zshrc`），本�
             ├─ ~/.envconfig → 环境配置
             ├─ ~/.config/dotfiles/os.zsh
             ├─ ~/.config/dotfiles/conf.d/*.zsh → 本机补充片段（没有就跳过）
+            ├─ 交互工具初始化（zoxide / mise / fzf）
+            ├─ zsh-autosuggestions → history-substring-search → syntax-highlighting
+            ├─ powerlevel10k 主题 + ~/.p10k.zsh（在所有插件之后）
             └─ ~/.config/tmux/aliases.sh → tmux 相关别名
 ```
 
@@ -216,10 +221,16 @@ Intel 上是 prefix 下的 `Homebrew`（`/usr/local/Homebrew`）。所以按 `un
 
 | 项 | 值 | 位置 |
 |---|---|---|
-| 主题 | `gnzh`（两行、浅灰前景，配深色终端） | `zsh/oh-my-zsh.sh` |
+| 主题 | **无**（`ZSH_THEME=""`，交给 powerlevel10k —— 见下） | `zsh/oh-my-zsh.sh` |
 | 大小写补全 | `CASE_SENSITIVE="false"` | 同上 |
 | 插件 | `git` `npm` `node` `rust` `golang` `brew` `colored-man-pages` `command-not-found` + `macos` | 同上 |
 
+- **主题不走 OmZ 机制**：`ZSH_THEME` 留空（空串时 OmZ 不加载任何主题），
+  提示符由 **powerlevel10k** 接管。p10k 是独立的提示符引擎，必须在
+  **所有插件之后**手动 source（见 `zshrc`），不能用 `ZSH_THEME` 加载。
+  - 主题文件从 brew 落点 source：`$HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme`
+  - 配置是 `zsh/p10k.zsh`（上游官方配置副本），链接到 `~/.p10k.zsh`
+  - instant prompt 块必须在 `zshrc` **最顶部**（在一切 source 之前）
 - **`z` 插件故意不启用**：`zshrc` 里已经 `eval "$(zoxide init zsh)"`，
   两个都注册 `z` 函数会互相覆盖，且各维护一份数据。统一用 zoxide。
 - `macos` 插件在 `ohmyzsh.plugins.zsh` 里 `plugins+=(macos)` 追加。

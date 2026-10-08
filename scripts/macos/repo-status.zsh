@@ -95,14 +95,15 @@ render_json() {
   now="$(date +%s)"
 
   # 连 git 都没有 —— 三态里的 unknown（问不出来），不是「没有仓库」。
-  if ! command -v git >/dev/null 2>&1; then
-    printf '{"version":%d,"checked_at":%s,"generated_by":"repo-status.zsh","is_git":null,"detail":"git 未安装，无法判断"}\n' \
-      "$CONTRACT_VERSION" "$now"
-    return 0
-  fi
+  # 走和正常路径同一套 out 构造器（只是 is_git 保持 null），别另起一份手拼的。
+  local git_missing="false"
+  command -v git >/dev/null 2>&1 || git_missing="true"
 
   local is_git="false" detail=""
-  if git_read rev-parse --is-inside-work-tree >/dev/null; then
+  if [[ "$git_missing" == "true" ]]; then
+    is_git="null"
+    detail="git 未安装，无法判断"
+  elif git_read rev-parse --is-inside-work-tree >/dev/null; then
     is_git="true"
   else
     # 明确不在 git 工作树里。这是「确定没有」，不是「问不出来」。

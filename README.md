@@ -74,7 +74,7 @@ EOF
 | **一次性设置** | `sudo -v` 预授权（其余私人信息本仓库不管） |
 | Homebrew + 包 | 没 brew 就先用 `NONINTERACTIVE=1` 自动装（装前会再确认一次管理员权限），再装 `packages/macos/brew-*.txt`；顺带修掉 brew 留下的「补全目录 group 可写」（否则每次开 shell 都有 oh-my-zsh 警告） |
 | oh-my-zsh / zsh 插件 | 装 `~/.oh-my-zsh` 与 brew 里没有的插件 |
-| 链接配置 | 19 个落点链到 `$HOME` |
+| 链接配置 | 20 个落点链到 `$HOME` |
 | tmux 插件 / mise | TPM 及插件；按 `mise/config.toml` 装工具 |
 | macOS 偏好 | 9 个 `prefs.d`；这步前会再补一次 `sudo`（失效时让你再输一次，不会卡住） |
 
@@ -114,6 +114,8 @@ EOF
 │       ├── brew-fix-completions-perms.zsh ← 修 brew 的补全目录权限（消除 oh-my-zsh 警告）
 │       ├── prompt-once.zsh  ← 开头一次性问权限（全自动的关键）
 │       ├── preflight.zsh / link-status.zsh / repo-status.zsh / mise-status.zsh
+│       │   / alias-status.zsh / env-status.zsh / git-identity.zsh / shell-map.zsh
+│       │   / ssh-status.zsh / git-config.zsh / brew-audit.zsh
 │       │                    ← 只读状态查询（--json，给 macview；契约见 macview-contract.md）
 │       ├── check.zsh, brew-install.zsh
 │       └── prefs.d/         ← 系统偏好，一个文件一个主题
@@ -191,7 +193,9 @@ zsh install.zsh check
 - PATH 归属：只有 `.zshenv` 能手拼 PATH
 - 所有 `.zsh` / `prefs.d/*.zsh` 的语法
 - **每个 macview 查询脚本的 `--json` 合法**（`preflight` / `link-status` /
-  `repo-status` / `mise-status` / `brew-audit --json`；契约见 `macview-contract.md`）
+  `repo-status` / `mise-status` / `alias-status` / `env-status` / `git-identity` /
+  `shell-map` / `ssh-status` / `git-config` / `brew-audit --json`；契约见
+  `macview-contract.md`）
 - **没有把保留变量 `path` 当 `local` 用**（`local path` 会清空 PATH，且不报错）
 
 **为什么要有它**：上面这些都是「改了 A 忘了 B → A 照跑、B 静默失效」的关系。
@@ -259,7 +263,13 @@ DOTFILE_LINKS=(
 | 脚本 | 回答什么 |
 |---|---|
 | `scripts/macos/preflight.zsh --json` | 仓库 / 要调的脚本 / 工具在不在 |
-| `scripts/macos/link-status.zsh --json` | 19 个落点各自的状态 |
+| `scripts/macos/link-status.zsh --json` | 20 个落点各自的状态 |
+| `scripts/macos/alias-status.zsh --json` | 别名的声明 vs 生效 |
+| `scripts/macos/env-status.zsh --json` | 环境变量的声明（仓库侧） |
+| `scripts/macos/git-identity.zsh --json` | Git 身份（姓名 / 邮箱） |
+| `scripts/macos/shell-map.zsh --json` | shell 加载链（谁 source 谁） |
+| `scripts/macos/ssh-status.zsh --json` | SSH 配置与密钥 |
+| `scripts/macos/git-config.zsh --json` | git 生效配置的来源与键值 |
 | `scripts/macos/brew-audit.zsh --json` | 包清单 vs 已装（对账） |
 | `scripts/macos/mise-status.zsh --json` | mise 声明 vs 实装 |
 | `scripts/macos/repo-status.zsh --json` | git 状态 |
@@ -321,7 +331,7 @@ zsh scripts/macos/brew-fix-completions-perms.zsh
 | 项 | 自动 | 说明 |
 |---|---|---|
 | brew / 所有 CLI / cask | ✅ | `NONINTERACTIVE=1`；少数 cask 自身仍可能要密码 |
-| 19 个配置落点 | ✅ | |
+| 20 个配置落点 | ✅ | |
 | oh-my-zsh / zsh 插件 / tmux 插件 / mise | ✅ | |
 | macOS 偏好 | ⚠️ | 需要 sudo；开头授权后**可能**还要再输一次（见下） |
 | **sudo 密码** | ❌ | 需要时**一定会等你输入**（不会卡死）；失效就再输一次 |

@@ -550,6 +550,7 @@ render_json() {
 
   # ── 拼 JSON ─────────────────────────────────────────────────────────
   local i
+  local out=""
   out="{"$'\n'
   out+="  \"version\": $CONTRACT_VERSION,"$'\n'
   out+="  \"checked_at\": $now,"$'\n'

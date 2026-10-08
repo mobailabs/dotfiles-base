@@ -131,6 +131,11 @@ json_escape() {
   printf '%s' "$s"
 }
 
+# 一个字符串值，或 null（和其它查询脚本同一套）。
+json_str_or_null() {
+  if [[ -z "${1:-}" ]]; then printf 'null'; else printf '"%s"' "$(json_escape "$1")"; fi
+}
+
 # ── 源文件清单（按顺序）─────────────────────────────────────────────────
 #
 # 顺序 = 界面显示的组顺序。`rel` 是仓库内相对路径（给 macview 显示），
@@ -372,12 +377,7 @@ render_json() {
         itemrow="        {"
         itemrow+=$'\n'"          \"name\": \"$(json_escape "$name")\","
         itemrow+=$'\n'"          \"value\": \"$(json_escape "$value")\","
-        itemrow+=$'\n'"          \"condition\": "
-        if [[ -n "$cond" ]]; then
-          itemrow+="\"$(json_escape "$cond")\""
-        else
-          itemrow+="null"
-        fi
+        itemrow+=$'\n'"          \"condition\": $(json_str_or_null "$cond")"
         itemrow+=$'\n'"        }"
         block+="$itemrow"
         (( i < ${#items[@]} )) && block+=","

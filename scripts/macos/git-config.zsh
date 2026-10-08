@@ -10,7 +10,7 @@
 #   · sources  —— 有哪些文件在贡献配置（git 实际读的）
 #   · aliases  —— `alias.*`（git 别名）
 #   · settings —— 一组**值得一眼看**的键的值（core.editor / autocrlf / …）
-#   · includes —— `include.path` 链
+#   · includes —— `include.path` 链（输出字段名 `include_paths`）
 #   · all      —— **全部**生效配置项（key / value / 来源文件）
 #
 # ## 它不做什么（三条，和 git-identity.zsh 同一套纪律）

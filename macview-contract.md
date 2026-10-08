@@ -111,7 +111,7 @@ macview 的新定位是**脚本控制器**:它自己**不判断差异、不改�
 
   - `prompt-once.zsh` 的 `preauth_sudo` → 永远判定「未授权」→ 报
     「跳过需要 sudo 的步骤」→ **Homebrew、Touch ID 全被静默跳过**;
-  - `brew-bootstrap.zsh:33` → `exit 1` 说「没有终端可输入密码」→ **装不上**。
+  - `brew-bootstrap.zsh` 里那个「无终端」分支 → `exit 1` 说「没有终端可输入密码」→ **装不上**。
 
 所以修法不只是「裸 sudo 换成 `$SUDO`」，还要把**判定**从 `sudo -n true`
 换成「`sudo_check`（静默问）失败 → `sudo_authorize`（去拿，可能弹框）」。
@@ -176,7 +176,7 @@ macOS 的 sudo 凭据默认 **5 分钟**过期,而装 Homebrew 能跑 **20 分�
 
 ### 1.2 退出码列 —— 「有缺失」不是「崩了」
 
-⚠️ **`brew-audit.zsh` 有缺失时退出码是 1**(`brew-audit.zsh:331`),
+⚠️ **`brew-audit.zsh` 有缺失时退出码是 1**（脚本末尾，有缺失则 `exit 1`），
 **这是正常的业务结果,不是错误**。
 
 macview **不能**把「非零 = 出错」当通则。判据是:
@@ -979,7 +979,7 @@ macview 写死的东西:
 
 | 写死什么 | 本仓库对应 |
 |---|---|
-| 入口脚本名(`install.zsh` + 子命令) | `install.zsh:325` |
+| 入口脚本名(`install.zsh` + 子命令) | `install.zsh` 的 `main`（子命令 `case`） |
 | 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1);**仓库侧副本 = `preflight.zsh` 的 `SCRIPTS`** |
 | **每个命令要不要提权** | 契约 §1 表格的「要提权」列 |
 | 落点数 | `link-dotfiles.zsh` 的 `DOTFILE_LINKS`(**个数不写死** —— 见下) |

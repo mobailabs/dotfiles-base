@@ -88,14 +88,6 @@ if [[ -o interactive ]]; then
     eval "$(mise activate zsh)"
   fi
 
-  # # CCE Shell Integration
-  # if [[ -f ~/.cce/config.toml ]]; then
-  #   current_provider=$(awk -F\" '/^current_provider/ {print $2}' ~/.cce/config.toml)
-  #   if [[ -n "$current_provider" ]]; then
-  #     eval "$(CCE_SHELL_INTEGRATION=1 cce use "$current_provider")"
-  #   fi
-  # fi
-
   # fzf - 模糊查找器（如果通过 Homebrew 安装）
   if [[ -f "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh" ]]; then
     source "$HOMEBREW_PREFIX/opt/fzf/shell/completion.zsh"
@@ -204,17 +196,6 @@ bindkey '^[[F' end-of-line            # End 键
 bindkey '^[[3~' delete-char           # Delete 键
 bindkey '^[[1;5C' forward-word        # Ctrl+Right 前进一个词
 bindkey '^[[1;5D' backward-word       # Ctrl+Left 后退一个词
-
-# ============================================
-# tmux 环境提示（可选）
-# ============================================
-# 在 tmux 中显示一个小提示
-if [[ -n "$TMUX" ]]; then
-  # 可以在这里添加 tmux 特定的配置
-  # 例如：显示当前 tmux 会话名
-  # echo "📺 tmux session: $(tmux display-message -p '#S')"
-  :
-fi
 
 # ============================================
 # 补全（compinit）
