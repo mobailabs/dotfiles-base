@@ -980,10 +980,20 @@ macview 写死的东西:
 | 写死什么 | 本仓库对应 |
 |---|---|
 | 入口脚本名(`install.zsh` + 子命令) | `install.zsh:325` |
-| 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1) |
+| 要调的脚本路径 | `scripts/macos/*.zsh`(清单见契约 §1);**仓库侧副本 = `preflight.zsh` 的 `SCRIPTS`** |
 | **每个命令要不要提权** | 契约 §1 表格的「要提权」列 |
-| 落点数(19) | `link-dotfiles.zsh:34` 的 `DOTFILE_LINKS` |
+| 落点数 | `link-dotfiles.zsh` 的 `DOTFILE_LINKS`(**个数不写死** —— 见下) |
 | 包清单路径 | `packages/macos/brew-*.txt` |
+
+⚠️ 「要调的脚本路径」那一行有**两份副本**:macview 的
+`DotfilesLayout.standard.scripts` 和本仓库 `preflight.zsh` 的 `SCRIPTS`。
+`selfcheck.zsh` 的 `check_macview_layout` 会**双向对账**这两份(找得到
+macview checkout 时)—— 不一致就报错、exit 1。找不到 macview 就只提示。
+所以加/删/改名一个 macview 要调的脚本,**两处都要改**。
+
+⚠️ 早先这张表里写过「落点数(19)」—— **已删**。个数是查询脚本从
+`DOTFILE_LINKS` 读出来的**事实**,写死在文档里就是第三份真相。
+本仓库侧也**不写死个数**(`SCRIPTS` 只列路径)。
 
 ⚠️ 早先这张表里还有一行「prefs 主题数(9)」。**已删**。2026-09-27 补了
 「系统」页的**真实主题清单**（契约 §2.7 的 `prefs.zsh --list --json`）——
@@ -997,12 +1007,19 @@ macview 写死的东西:
 | 你改了 | macview(没同步)的反应 | 好不好 |
 |---|---|---|
 | 重命名脚本 | 启动检测报「脚本不在」 | ✅ 会报错 |
+| 加/删一个 macview 要调的脚本 | `selfcheck` 双向对账报出两边的差 | ✅ 会报错(见上) |
 | 改落点(加一行) | 落点查询脚本从 `DOTFILE_LINKS` 读 —— **自动跟上** | ✅ 不漂移 |
 | 改某个命令要不要提权 | 该弹密码框的没弹(macview 没注入 `SUDO_ASKPASS`)→ sudo 失败 | ❌ **会静默漂移** |
 | 加一个 `prefs.d` 主题 | 系统页的清单从 `prefs.zsh --list` 读 —— **自动跟上** | ✅ 不漂移 |
 
 「要不要提权」那一行是**唯一会静默漂移的地方** —— 它必须和 §1 的表格
 **同时改**。改了契约不改 macview,需要密码的步骤会**静默失败**。
+
+⚠️ 早先「脚本路径」那一行也曾是**静默**的:macview 的缺失检测是「拿自己
+的清单去 `preflight` 的报告里查」,所以 `preflight` **漏报**一个脚本时那条
+检查永远不触发(2026-10-08 就是这么发现 `brew-uninstall.zsh` /
+`git-config.zsh` 两边对不上的)。现在 `check_macview_layout` 把两份清单
+**双向**对账,漏报也会被抓住。
 
 ---
 

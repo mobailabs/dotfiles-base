@@ -166,6 +166,76 @@ check_entrypoints() {
   done < <(grep -oE 'SCRIPT_DIR/[A-Za-z0-9_./-]+\.zsh' "$entry" | sed 's|^SCRIPT_DIR/||' | sort -u)
 }
 
+# ── 3b. macview 的 DotfilesLayout ←→ 这里的 preflight SCRIPTS ────────────
+#
+# 契约 §四：仓库结构被**写死两份** —— 仓库侧是 preflight.zsh 的 SCRIPTS，
+# macview 侧是 `Sources/MacViewCore/Script/DotfilesLayout.swift` 的
+# `scripts: [...]`。两边各自手维护，**没有任何东西拦着它们漂**。
+#
+# 漂的后果是静默的：macview 的缺失检测是「拿自己的清单去 preflight 报告里
+# 查」，所以 preflight **漏报**一个脚本时，那条检查永远不触发 —— 点了没反应。
+# 2026-10-08 就是这么发现 `brew-uninstall.zsh` / `git-config.zsh` 两边对不上。
+#
+# ## 为什么是条件检查（找不到 macview 就 warn，不 fail）
+#
+# 这份 selfcheck 是**仓库自己的**，不该假设 macview checkout 在旁边 ——
+# 别人 clone dotfiles 单独跑不能因此变红。找得到就比，找不到提示一句。
+# 位置：`$MACVIEW_DIR`，或同级的 `../macview`。
+check_macview_layout() {
+  section "macview DotfilesLayout ←→ preflight SCRIPTS"
+
+  local mv="${MACVIEW_DIR:-}"
+  if [[ -z "$mv" ]]; then
+    local sibling="$ROOT_DIR/../macview"
+    [[ -f "$sibling/Sources/MacViewCore/Script/DotfilesLayout.swift" ]] && mv="$sibling"
+  fi
+  local layout="$mv/Sources/MacViewCore/Script/DotfilesLayout.swift"
+  if [[ ! -f "$layout" ]]; then
+    warn "没找到 macview 的 DotfilesLayout.swift（设 \$MACVIEW_DIR 或放到同级 ../macview），跳过"
+    return
+  fi
+
+  # 抽 macview 那份清单：从 `        scripts: [`（8 空格缩进、后面紧跟换行的
+  # 那一条，即 `standard` 里的数组）到下一个 `files: [` 之间，取 `path: "..."`。
+  # ⚠️ 起止点都要挑准：只按 `scripts: [` 会撞上 struct 声明
+  # （`public let scripts: [ExpectedFile]`）和 init 参数
+  # （`scripts: [ExpectedFile],`）；起早了还会把 `entryScript:` 也算进去
+  # （于是 install.zsh 数两遍）。这里的两个锚点唯一指向 `standard` 那个数组。
+  local -a mv_scripts
+  mv_scripts=(
+    ${(f)"$(awk '/^        scripts: \[$/,/files: \[/' "$layout" \
+              | grep -oE 'path: "[^"]+"' | sed 's/path: "//; s/"$//')"}
+  )
+
+  # 抽 preflight 那份：SCRIPTS=( ... 'path|name' ... ) 取 `|` 前的路径。
+  local -a pf_scripts
+  pf_scripts=(
+    ${(f)"$(awk '/^SCRIPTS=\(/,/^\)/' "$ROOT_DIR/scripts/macos/preflight.zsh" \
+              | grep -oE "'[^']+\|[^']+'" | sed "s/'//; s/|.*//")"}
+  )
+
+  (( ${#mv_scripts[@]} > 0 )) || { bad "从 DotfilesLayout.swift 里一条脚本路径都没抽出来（格式变了？）"; return; }
+  (( ${#pf_scripts[@]} > 0 )) || { bad "从 preflight.zsh 里一条脚本路径都没抽出来（格式变了？）"; return; }
+
+  # 双向差集 —— 只查一个方向会漏「preflight 多报了一个」。
+  local -a only_mv only_pf
+  only_mv=(${mv_scripts:|pf_scripts})
+  only_pf=(${pf_scripts:|mv_scripts})
+  local p
+
+  if (( ${#only_mv[@]} == 0 && ${#only_pf[@]} == 0 )); then
+    ok
+    echo "  ${#mv_scripts[@]} 条脚本两边一致"
+  else
+    for p in "${only_mv[@]}"; do
+      [[ -n "$p" ]] && bad "macview 期待 '$p'，但 preflight SCRIPTS 里没有（漏报 → 那条检查永远不触发）"
+    done
+    for p in "${only_pf[@]}"; do
+      [[ -n "$p" ]] && bad "preflight SCRIPTS 报了 '$p'，但 macview DotfilesLayout 里没有"
+    done
+  fi
+}
+
 # ── 4. prefs.d：顺序表 ←→ 磁盘 ──────────────────────────────────────────
 check_prefs() {
   section "prefs.d/ ←→ prefs.zsh 的顺序表"
@@ -451,6 +521,7 @@ main() {
   check_links
   check_doc_refs
   check_entrypoints
+  check_macview_layout
   check_prefs
   check_usage_steps
   check_path_ownership

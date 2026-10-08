@@ -77,7 +77,8 @@ fi
 
 # ── macview 要调的脚本（结构写死，见契约第四节）─────────────────────────
 #
-# ⚠️ 这份清单必须和 macview 的 `DotfilesLayout` 保持一致。改一处要改两处。
+# ⚠️ 这份清单必须和 macview 的 `DotfilesLayout.standard.scripts` 保持一致。
+#    改一处要改两处 —— selfcheck 里有跨仓一致性检查（见下）。
 #    它是「结构写死」那份描述的仓库侧副本。
 #
 # 覆盖范围：契约 §1「执行侧」表格里所有 macview 会调的东西。
@@ -85,6 +86,8 @@ fi
 #   · brew-install.zsh       —— 装软件
 #   · mise-setup.zsh         —— 装开发环境
 #   · link-dotfiles.zsh, prefs.zsh, brew-audit.zsh
+#   · brew-uninstall.zsh     —— 卸载一个 formula / cask（契约 §1.3）
+#   · git-config.zsh         —— Git 页的「配置」块查询（契约 §2.13）
 #   · selfcheck.zsh          —— install.zsh check 实际调的就是它
 SCRIPTS=(
   'install.zsh|install.zsh'
@@ -93,6 +96,8 @@ SCRIPTS=(
   'scripts/macos/prefs.zsh|prefs.zsh'
   'scripts/macos/mise-setup.zsh|mise-setup.zsh'
   'scripts/macos/brew-audit.zsh|brew-audit.zsh'
+  'scripts/macos/brew-uninstall.zsh|brew-uninstall.zsh'
+  'scripts/macos/git-config.zsh|git-config.zsh'
   'scripts/macos/selfcheck.zsh|selfcheck.zsh'
 )
 
