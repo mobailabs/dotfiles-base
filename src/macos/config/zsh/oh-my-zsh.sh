@@ -10,15 +10,15 @@ export ZSH=~/.oh-my-zsh
 # ============================================
 # 主题配置
 # ============================================
-# Set name of the theme to load.
-# Look in ~/.oh-my-zsh/themes/
-# Optionally, if you set this to "random", it'll load a random theme each
-# time that oh-my-zsh is loaded.
+# ⚠️ **主题交给 powerlevel10k，不走 OmZ 的 ZSH_THEME 机制**。
 #
-# 用 gnzh：两行提示符、以浅灰前景为主，和 ghostty/tmux 的深色配色搭。
-# OmZ 默认的 robbyrussell 是蓝底箭头 + 黄色路径，在深色板里偏刺眼。
-# 想换回默认就改回 "robbyrussell"。
-ZSH_THEME="gnzh"
+# 早先用 `ZSH_THEME="gnzh"`（OmZ 自带主题）。改成 p10k 的原因：p10k 是
+# 独立的提示符引擎（自己管 git 状态、目录截断、瞬态提示符），它要在
+# **所有插件之后**手动 source（见 `zshrc` 底部），不能用 ZSH_THEME 加载。
+#
+# 所以这里**留空** —— 空串时 OmZ 不加载任何主题，只加载下面的 plugins。
+# 设回 "gnzh" 就能退回旧主题（那样 p10k 那两行 source 要删掉，二选一）。
+ZSH_THEME=""
 
 # ============================================
 # 补全配置

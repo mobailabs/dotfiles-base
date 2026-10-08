@@ -1,4 +1,19 @@
 #!/usr/bin/env zsh
+
+# ============================================
+# Powerlevel10k instant prompt（**必须在最顶部**）
+# ============================================
+# p10k 的 instant prompt 让提示符**先画出来**，插件在后台继续加载 ——
+# 这是 p10k 消除启动延迟的关键。代价：它要求这段**紧贴 zshrc 顶部**
+# （在 source 任何别的东西之前），否则 p10k 会放弃并打印一段警告。
+#
+# 到这儿时终端还什么都不能打印。p10k 会在必要时自己把终端程序缓存起来。
+# 想关掉 instant prompt：p10k.zsh 里设 POWERLEVEL9K_INSTANT_PROMPT=off，
+# 并删掉本段。
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 # ============================================
 # Homebrew 环境（要先于 oh-my-zsh，因为 fpath 要在 compinit 之前就位）
 # ============================================
@@ -118,6 +133,23 @@ fi
 # zsh-syntax-highlighting（语法高亮，必须最后加载）
 if [[ -f "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
   source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+
+# ============================================
+# Powerlevel10k 提示符（在**所有插件之后**加载）
+# ============================================
+# 主题文件从 brew 的落点 source（`brew install powerlevel10k` 装的）。
+# ⚠️ 顺序：必须在 zsh-autosuggestions / syntax-highlighting **之后** ——
+# p10k 自己接管提示符，早于插件加载会和它们抢那几行。
+# 走 brew 而不是 OmZ 主题目录：brew 能升级、能对账（macview 看得见）。
+#
+# 配置（~/.p10k.zsh）在下面单独 source：它引用 p10k 的函数，所以要
+# 在主题之后。两者都缺就什么都不做（没装 p10k 的机器照常用，无报错）。
+if [[ -n "${HOMEBREW_PREFIX:-}" && -f "$HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
+  source "$HOMEBREW_PREFIX/share/powerlevel10k/powerlevel10k.zsh-theme"
+  # 用户自己的 p10k 配置（仓库里的 p10k.zsh 链接过来）。p10k 官方推荐
+  # 「config 文件单独 source」——见 p10k.zsh 末尾的 POWERLEVEL9K_CONFIG_FILE。
+  [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 fi
 
 # ============================================

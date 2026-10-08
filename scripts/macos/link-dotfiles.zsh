@@ -39,6 +39,7 @@ DOTFILE_LINKS=(
   'env/exports|.exports'
   'shell/funcs|.funcs'
   'zsh/oh-my-zsh.sh|.oh-my-zsh.sh'
+  'zsh/p10k.zsh|.p10k.zsh'
   'zsh/os.zsh|.config/dotfiles/os.zsh'
   'zsh/ohmyzsh.plugins.zsh|.config/dotfiles/ohmyzsh.plugins.zsh'
   'tmux/tmux.conf|.tmux.conf'

@@ -211,6 +211,7 @@ zsh install.zsh check
 | 改开头那几个提问 | `scripts/macos/prompt-once.zsh` |
 | 改工具版本 | `src/macos/config/mise/config.toml` |
 | 加一个 Homebrew 里**没有**的 zsh 插件 | `scripts/macos/zsh-plugins-install.zsh` 的 `ZSH_PLUGINS` + `src/macos/config/zsh/zshrc` 里的 source 行 |
+| 改提示符主题（powerlevel10k） | `src/macos/config/zsh/p10k.zsh`（官方配置副本，链接到 `~/.p10k.zsh`）；启用/停用在 `src/macos/config/zsh/zshrc` 的 p10k 段 |
 | 加一个机器专属的东西 | **不是这里** —— 放 `conf.d` 或 git / ssh 自己的位置（见「加载点」） |
 | **改完任何东西** | 跑 `zsh install.zsh check`（见下面「改完跑一下自检」） |
 

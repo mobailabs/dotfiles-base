@@ -33,6 +33,10 @@ zsh-autosuggestions
 zsh-completions
 zsh-syntax-highlighting
 zsh-history-substring-search
+# 提示符主题。**在 `oh-my-zsh.sh` / `zshrc` 里手动 source**
+# （不用 OmZ 的 ZSH_THEME 机制 —— 见 `oh-my-zsh.sh` 的说明）。
+# 配置是 `src/macos/config/zsh/p10k.zsh`，链接到 ~/.p10k.zsh。
+powerlevel10k
 
 # ---- 开发工具 ----
 fd
