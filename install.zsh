@@ -15,11 +15,9 @@ Usage: zsh install.zsh [command] [options]
 Commands:
   (empty) | base   Run setup: 一次性设置（权限）, OS check,
                    Homebrew + packages, oh-my-zsh, zsh plugins,
-                   link dotfiles, private config skeletons,
-                   tmux plugins, mise, macOS prefs
+                   link dotfiles, tmux plugins, mise, macOS prefs
   prefs            Apply macOS preferences only (re-runnable, idempotent)
   link             Link dotfiles only
-  seed             Create empty private-config skeletons only (idempotent)
   audit            Report declared-but-not-installed brew packages (read-only)
   check            Repo self-check: cross-references & syntax (read-only)
   help             Show this help
@@ -248,10 +246,6 @@ run_base() {
   run_step "zsh 插件"              "$SCRIPT_DIR/scripts/macos/zsh-plugins-install.zsh"
   # 链接配置放在装包之后、但不受装包失败影响 —— 这是本流程最该保证的一步。
   run_step "链接配置文件"           "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh"
-  # 私有配置的空壳（空文件 + 注释）：只在不存在时建，已存在不动。
-  # 放在链接之后 —— 加载口（conf.d/*.zsh、git 的 XDG 位置、~/.ssh/config）
-  # 这时都就位了，建出来的空壳立刻能被加载。内容由用户 / macview 填。
-  run_step "私有配置空壳"           "$SCRIPT_DIR/scripts/macos/private-seed.zsh"
   run_step "tmux 插件（TPM）"       "$SCRIPT_DIR/scripts/macos/tmux-plugins-install.zsh"
   run_step "mise 工具"             "$SCRIPT_DIR/scripts/macos/mise-setup.zsh"
 
@@ -321,7 +315,6 @@ main() {
     base) run_base ;;
     prefs) "$SCRIPT_DIR/scripts/macos/prefs.zsh" ;;
     link) "$SCRIPT_DIR/scripts/macos/link-dotfiles.zsh" ;;
-    seed) "$SCRIPT_DIR/scripts/macos/private-seed.zsh" ;;
     audit) "$SCRIPT_DIR/scripts/macos/brew-audit.zsh" ;;
     check) "$SCRIPT_DIR/scripts/macos/selfcheck.zsh" ;;
     help|-h|--help) usage ;;
