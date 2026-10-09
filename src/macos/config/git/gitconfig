@@ -88,6 +88,18 @@
 	# 「Author identity unknown」失败。
 	# 这是故意的 —— 防止换机器后拿主机名 / 系统用户名当邮箱提交出错。
 	useConfigOnly = true
+
+# 私有身份 —— name/email 从 ~/.gitconfig.local 读（**不进仓库**）。
+#
+# 为什么不直接写进上面 [user]：那样会被提交，公开仓库就泄露了邮箱，
+# 而且换机器还要再改仓库源。放 ~/.gitconfig.local（用户自己的文件，
+# 不在 dotfiles 里）既私有又能每台机器不同。
+#
+# ⚠️ 只有这一行 include，没有它 `.gitconfig.local` 就是死文件（曾发生过：
+# 配了 name/email 却全局读不到，commit 用的是各仓库本地配置）。
+# macview 的 Git 页可以就地编辑 ~/.gitconfig.local（私有 overlay）。
+[include]
+	path = ~/.gitconfig.local
 [credential "https://github.com"]
 	helper = 
 	helper = !gh auth git-credential
