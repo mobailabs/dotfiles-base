@@ -7,7 +7,8 @@
 #
 # 1. **keys**  —— `~/.ssh` 下的私钥清单：名字 / 类型 / 权限 / 有没有配对公钥。
 # 2. **config** —— `~/.ssh/config` 里声明的 Host，及每台的
-#    HostName / User / Port / IdentityFile；外加那个加载点（`Include` 行）。
+#    HostName / User / Port / IdentityFile；外加那个加载点（`Include` 行。
+#    含「Include 指着不存在的文件」—— 悬空引用，和「没配」分开报）。
 # 3. **agent** —— `ssh-add -l` 报的已加载 key 指纹。
 #
 # ## ⚠️ 最要紧的边界：**只报「结构」，绝不读密钥内容**
@@ -256,13 +257,25 @@ probe_config_hosts() {
 # ── 加载点：`~/.ssh/config` 里有没有 `Include` ─────────────────────────
 #
 # 宿主文件里得有 `Include ...` 那一行，被 include 的内容才会生效。
-# 这里只报事实（有没有 Include、指向哪些文件），界面负责措辞。
+# 这里只报事实（有没有 Include、指向哪些文件、哪些文件不存在），界面负责措辞。
 #
-# 产出：`has_config|has_include|include_targets`（targets 逗号分隔）。
+# ⚠️ **「Include 指着不存在的文件」要和「没配」分开报**（2026-10-09 加）。
+# 光有 `has_include = 1` 会让人以为配好了 —— 但若目标是空文件，等于
+# 「有加载点、后面是空的」。这和 git 的「`~/.gitconfig.local` 是死文件」
+# 同一枚硬币的两面：那边是「文件在、没人 include」，这边是「include 在、
+# 文件不在」。所以要单独报 `missing_targets`。
+#
+# 判据只 `[[ -e ]]`（**不读内容**，不破「只看结构」的边界）。展开 `~` 用
+# zsh 的 `${~p}` —— 目录通配（`Include config.d/*`）这里不展开成「缺」：
+# 通配符原样保留，界面自行判断（`missing` 只收**具体路径且不存在**的）。
+#
+# 产出：`has_config|has_include|include_targets|missing_targets`
+#       （两个 targets 都是逗号分隔）。
 probe_load_point() {
   local cfg="$SSH_DIR/config"
   local has_config=0 has_include=0
   local -a targets=()
+  local -a missing=()
 
   if [[ -f "$cfg" ]]; then
     has_config=1
@@ -283,11 +296,23 @@ probe_load_point() {
     done < "$cfg"
   fi
 
-  local joined=""
+  # 展开 `~` 后逐个看在不在 —— 只 `[[ -e ]]`，不读内容。
+  local t expanded
+  for t in "${targets[@]}"; do
+    # 通配符（`*` / `?`）不当「缺」—— 那是模式，不是具体文件。
+    [[ "$t" == *"*"* || "$t" == *"?"* ]] && continue
+    expanded="${~t}"
+    [[ -e "$expanded" ]] || missing+=("$t")
+  done
+
+  local joined="" joined_missing=""
   if (( ${#targets[@]} > 0 )); then
     joined="${(j:,:)targets}"
   fi
-  printf '%s|%s|%s\n' "$has_config" "$has_include" "$joined"
+  if (( ${#missing[@]} > 0 )); then
+    joined_missing="${(j:,:)missing}"
+  fi
+  printf '%s|%s|%s|%s\n' "$has_config" "$has_include" "$joined" "$joined_missing"
 }
 
 # ── agent ───────────────────────────────────────────────────────────────
@@ -338,12 +363,14 @@ render_json() {
   lp_out="$(probe_load_point)"
   agent_out="$(probe_agent)"
 
-  # 加载点那行：has_config|has_include|targets
-  local lp_has_config lp_has_include lp_targets
+  # 加载点那行：has_config|has_include|targets|missing_targets
+  local lp_has_config lp_has_include lp_targets lp_missing
   lp_has_config="${lp_out%%|*}"
   lp_out="${lp_out#*|}"
   lp_has_include="${lp_out%%|*}"
-  lp_targets="${lp_out#*|}"
+  lp_out="${lp_out#*|}"
+  lp_targets="${lp_out%%|*}"
+  lp_missing="${lp_out#*|}"
 
   # agent 那行：state|fps
   local ag_state ag_fps
@@ -431,6 +458,22 @@ render_json() {
       (( first )) || out+=","$'\n'
       first=0
       out+="      \"$(json_escape "$t")\""
+    done
+    out+=$'\n'"    ]"$'\n'
+  fi
+  out+="    ,\"missing_targets\": ["
+  if [[ -z "$lp_missing" ]]; then
+    out+="]"$'\n'
+  else
+    out+=$'\n'
+    local first=1 m
+    local -a mparts=()
+    IFS=',' read -r -A mparts <<<"$lp_missing"
+    for m in "${mparts[@]}"; do
+      [[ -n "$m" ]] || continue
+      (( first )) || out+=","$'\n'
+      first=0
+      out+="      \"$(json_escape "$m")\""
     done
     out+=$'\n'"    ]"$'\n'
   fi

@@ -789,7 +789,8 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
   "load_point": {
     "has_config": true,
     "has_include": true,
-    "include_targets": ["~/.ssh/config.d/work"]
+    "include_targets": ["~/.ssh/config.d/work"],
+    "missing_targets": []
   },
   "agent": { "state": "empty", "loaded_fingerprints": [] },
   "counts": { "keys": 3, "hosts": 2 }
@@ -806,6 +807,10 @@ brew 探测门)。**声明值和实际值不是一回事** —— 例如
   `IdentityFile`)。
 - `load_point` 是宿主文件里有没有 `Include`、指向哪些文件。
   `include_targets` 原样记(不展开 `~`)。
+- `missing_targets` 是 `include_targets` 里**指向不存在文件**的那些(原样,
+  不展开 `~`)。**「Include 指着空文件」要和「没配」分开** —— 它是悬空引用,
+  不是干净初始态(2026-10-09 加)。判据只 `[[ -e ]]`,不读内容;通配目标
+  (`config.d/*`)不计入。**加法向后兼容**,`version` 不动。
 - `counts` 是脚本自报的;界面**以自己的数组长度为准**(同 §2.8)。
 
 ### 2.13 git 配置 `scripts/macos/git-config.zsh --json`(✅ 已建)
